@@ -48,8 +48,9 @@ Deferred (need extra RPC/model work): label filtering + Labels/Ratio-limit colum
   non-destructive RPCs (`torrent-get files/fileStats`, `free-space`, `torrent-add`
   duplicate) were validated live.
 
-- Plan of record: `../.context/mac-port-plan.md`
-- Feature backlog: `../.context/feature-ranking.md`
+- Plans live in `../.context/`, numbered chronologically: `01-mac-port-plan.md` (MVP),
+  `02-feature-backlog.md`, `03-feature-ranking.md` (ranked backlog), `04-native-followups.md`
+  (icon recolor, Ratio-Limit column, folder-filter fix, connecting state).
 
 ## Layout (`macapp/Sources/`)
 
