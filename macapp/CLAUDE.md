@@ -41,7 +41,12 @@ implemented:
 - **Persistence** — window frame, split positions, column order/width/visibility,
   and sort descriptor all persist across launches.
 
-Deferred (need extra RPC/model work): label filtering + Labels/Ratio-limit columns.
+Native follow-ups (`04-native-followups.md`) also done: blue app icon (modern
+icns), sortable **Ratio-Limit column** (hidden by default), disambiguated sidebar
+folder labels (minimal unique suffix), and a "Connecting…" first-launch state
+that no longer flashes an offline/error message before the first handshake.
+
+Intentionally dropped: **label filtering and the Labels column/sidebar group.**
 
 - **Remove**'s data-deleting path and the per-file wanted/priority **writes** were
   intentionally **not** fired against the owner's prod server. Read paths and
