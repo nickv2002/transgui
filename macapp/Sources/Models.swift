@@ -258,3 +258,14 @@ struct AddOutcome: Sendable {
     let name: String
     let duplicate: Bool
 }
+
+/// Decoded `arguments` for `free-space`.
+struct FreeSpaceArguments: Decodable, Sendable {
+    let path: String
+    let sizeBytes: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case path
+        case sizeBytes = "size-bytes"
+    }
+}

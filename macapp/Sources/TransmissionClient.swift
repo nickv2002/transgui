@@ -176,6 +176,14 @@ actor TransmissionClient {
         return AddOutcome(name: response.arguments?.added?.name ?? "torrent", duplicate: false)
     }
 
+    /// Free space (bytes) for a server path. Returns nil if the daemon can't
+    /// report it. Mirrors the legacy "Free disk space" display.
+    func freeSpace(path: String) async throws -> Int64? {
+        let response: RPCResponse<FreeSpaceArguments> = try await send(
+            method: "free-space", arguments: ["path": path])
+        return response.arguments?.sizeBytes
+    }
+
     // MARK: - Core
 
     /// A response whose `arguments` we don't need to inspect.

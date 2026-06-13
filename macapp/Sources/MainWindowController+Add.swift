@@ -93,6 +93,12 @@ extension MainWindowController {
         destField.widthAnchor.constraint(equalToConstant: 460).isActive = true
         stack.addArrangedSubview(destField)
 
+        if let free = refresh.freeSpace, free >= 0 {
+            let freeLabel = makeLabel("Free space on server: \(Formatters.size(free))")
+            freeLabel.textColor = .secondaryLabelColor
+            stack.addArrangedSubview(freeLabel)
+        }
+
         let startCheck = NSButton(checkboxWithTitle: "Start when added", target: nil, action: nil)
         startCheck.state = .on
         stack.addArrangedSubview(startCheck)

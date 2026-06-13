@@ -25,6 +25,9 @@ final class RefreshController {
     /// The daemon's default download directory (from `session-get`), used to
     /// prefill the Add-torrent destination. Updated on each session handshake.
     private(set) var defaultDownloadDir: String?
+
+    /// Free space (bytes) for `defaultDownloadDir`, refreshed on each poll.
+    private(set) var freeSpace: Int64?
     private var loopTask: Task<Void, Never>?
     private var paused = false
     private(set) var state: State = .idle {
@@ -104,6 +107,9 @@ final class RefreshController {
                 let info = try? await client.fetchSession()
                 defaultDownloadDir = info?.downloadDir
                 state = .connected(version: info?.version ?? "?")
+            }
+            if let dir = defaultDownloadDir {
+                freeSpace = try? await client.freeSpace(path: dir)
             }
             onTorrents?(torrents)
         } catch {

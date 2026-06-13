@@ -438,8 +438,32 @@ final class MainWindowController: NSWindowController {
         let count = displayed.count == torrents.count
             ? "\(torrents.count) torrents"
             : "\(displayed.count) of \(torrents.count) torrents"
-        var parts = [count, connection]
-        if !rates.isEmpty { parts.insert(rates, at: 1) }
+
+        // Aggregate counts per status group (only non-zero groups shown).
+        var downloading = 0, seeding = 0, stopped = 0, checking = 0, errored = 0
+        for t in torrents {
+            if t.hasError { errored += 1 }
+            switch t.status {
+            case .downloading: downloading += 1
+            case .seeding: seeding += 1
+            case .stopped: stopped += 1
+            case .checking, .checkWait: checking += 1
+            default: break
+            }
+        }
+        let breakdown = [
+            downloading > 0 ? "DL \(downloading)" : nil,
+            seeding > 0 ? "Seed \(seeding)" : nil,
+            checking > 0 ? "Check \(checking)" : nil,
+            stopped > 0 ? "Stopped \(stopped)" : nil,
+            errored > 0 ? "Err \(errored)" : nil,
+        ].compactMap { $0 }.joined(separator: " · ")
+
+        var parts = [count]
+        if !breakdown.isEmpty { parts.append(breakdown) }
+        if !rates.isEmpty { parts.append(rates) }
+        if let free = refresh.freeSpace, free >= 0 { parts.append("Free: \(Formatters.size(free))") }
+        parts.append(connection)
         statusLabel.stringValue = parts.joined(separator: "      ")
     }
 
