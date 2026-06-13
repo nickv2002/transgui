@@ -57,7 +57,9 @@ genuinely downloading); **folder-dupe locations merged** (counts keyed on
 updates + `reloadItem`, full reload only on structural change with scroll
 save/restore); and **reorderable sidebar sections** (`SidebarGroup` order in
 `UserDefaults` `SidebarGroupOrder`, drag-to-reorder group rows + right-click Move
-Up/Down).
+Up/Down). Follow-up after the plan: the Folders group sorts by its **displayed
+label** (the disambiguating suffix) via `localizedStandardCompare`, not the full
+download path.
 
 Intentionally dropped: **label filtering and the Labels column/sidebar group.**
 
