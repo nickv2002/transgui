@@ -1,0 +1,40 @@
+name: TransmissionRemote
+options:
+  bundleIdPrefix: com.nickvance
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  TransmissionRemote:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+      - path: Resources
+    settings:
+      base:
+        PRODUCT_NAME: "Transmission Remote"
+        PRODUCT_BUNDLE_IDENTIFIER: com.nickvance.transmission-remote-mac
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleIconFile: AppIcon
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        INFOPLIST_KEY_NSHighResolutionCapable: YES
+        # Local-only MVP: ad-hoc sign so `xcodebuild` and Run-from-Xcode work
+        # without provisioning profiles. Unsandboxed (network + local file access).
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+        SWIFT_STRICT_CONCURRENCY: complete
+        # We use an explicit main.swift entry point; the Xcode "debug dylib"
+        # split assumes an @main type and breaks the link, so disable it.
+        ENABLE_DEBUG_DYLIB: NO
