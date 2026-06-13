@@ -46,6 +46,19 @@ icns), sortable **Ratio-Limit column** (hidden by default), disambiguated sideba
 folder labels (minimal unique suffix), and a "Connecting…" first-launch state
 that no longer flashes an offline/error message before the first handshake.
 
+Round-2 follow-ups (`05-native-followups-2.md`) done and verified live:
+**asset-catalog AppIcon** so the Dock tile renders the blue badge (the `.icns`
+stays for Finder; needed an IconServices/Dock cache flush — `lsregister -f` +
+empty `$DARWIN_USER_CACHE_DIR/com.apple.iconservices` + `killall Dock`); ETA shows
+**"—" for completed/seeding** torrents (`Torrent.etaDisplay`; "∞" only while
+genuinely downloading); **folder-dupe locations merged** (counts keyed on
+`Torrent.normalizedDownloadDir`, folder filter matches normalized on both sides);
+**sidebar scroll preserved across polls** (structure-fingerprint → in-place count
+updates + `reloadItem`, full reload only on structural change with scroll
+save/restore); and **reorderable sidebar sections** (`SidebarGroup` order in
+`UserDefaults` `SidebarGroupOrder`, drag-to-reorder group rows + right-click Move
+Up/Down).
+
 Intentionally dropped: **label filtering and the Labels column/sidebar group.**
 
 - **Remove**'s data-deleting path and the per-file wanted/priority **writes** were
