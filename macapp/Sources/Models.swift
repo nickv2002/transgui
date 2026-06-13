@@ -42,6 +42,14 @@ enum BandwidthPriority: Int, Sendable, CaseIterable {
     }
 }
 
+/// Transmission `seedRatioMode` values (RPC spec): 0 use the global limit, 1 use
+/// this torrent's own `seedRatioLimit`, 2 seed regardless of ratio.
+enum SeedRatioMode: Int, Sendable {
+    case global = 0
+    case single = 1
+    case unlimited = 2
+}
+
 /// Per-file priority (`torrent-set` `priority-low/normal/high`). Same raw values
 /// as `BandwidthPriority` but a distinct type because the RPC methods differ.
 enum FilePriority: Int, Sendable, CaseIterable {
@@ -103,6 +111,8 @@ struct Torrent: Codable, Sendable, Identifiable, Equatable {
     let activityDate: Double
     let downloadedEver: Int64
     let uploadedEver: Int64
+    let seedRatioLimit: Double
+    let seedRatioModeRaw: Int
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -132,6 +142,8 @@ struct Torrent: Codable, Sendable, Identifiable, Equatable {
         case activityDate
         case downloadedEver
         case uploadedEver
+        case seedRatioLimit
+        case seedRatioModeRaw = "seedRatioMode"
     }
 
     var status: TorrentStatus { TorrentStatus(rawValue: statusRaw) ?? .stopped }
@@ -157,6 +169,29 @@ struct Torrent: Codable, Sendable, Identifiable, Equatable {
         BandwidthPriority(rawValue: bandwidthPriorityRaw) ?? .normal
     }
 
+    var seedRatioMode: SeedRatioMode {
+        SeedRatioMode(rawValue: seedRatioModeRaw) ?? .global
+    }
+
+    /// Display string for the torrent's seed-ratio limit: the global default,
+    /// this torrent's own limit, or ∞ for "seed regardless".
+    var seedRatioDisplay: String {
+        switch seedRatioMode {
+        case .global: return "Default"
+        case .single: return Formatters.ratio(seedRatioLimit)
+        case .unlimited: return "∞"
+        }
+    }
+
+    /// Effective ratio limit for sorting: global → its own limit value, single →
+    /// its limit, unlimited → +∞ so it sorts last.
+    var effectiveRatioLimit: Double {
+        switch seedRatioMode {
+        case .global, .single: return seedRatioLimit
+        case .unlimited: return .infinity
+        }
+    }
+
     /// The list of fields the MVP requests from `torrent-get`.
     static let requestedFields = [
         "id", "name", "status", "percentDone", "totalSize", "sizeWhenDone",
@@ -164,7 +199,8 @@ struct Torrent: Codable, Sendable, Identifiable, Equatable {
         "downloadDir", "errorString", "peersConnected", "peersSendingToUs",
         "peersGettingFromUs", "addedDate", "hashString", "queuePosition",
         "bandwidthPriority", "trackers", "comment", "error", "doneDate",
-        "activityDate", "downloadedEver", "uploadedEver",
+        "activityDate", "downloadedEver", "uploadedEver", "seedRatioLimit",
+        "seedRatioMode",
     ]
 }
 
