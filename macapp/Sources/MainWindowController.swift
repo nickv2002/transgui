@@ -221,6 +221,7 @@ final class MainWindowController: NSWindowController {
         split.addArrangedSubview(scroll)
         split.addArrangedSubview(detailTabView)
         split.translatesAutoresizingMaskIntoConstraints = false
+        split.autosaveName = "DetailSplit"
 
         // Sidebar filter groups, then the table/detail split, side by side.
         sidebar.onFilterChange = { [weak self] filter in self?.applyFilter(filter) }
@@ -231,6 +232,7 @@ final class MainWindowController: NSWindowController {
         mainSplit.addArrangedSubview(split)
         mainSplit.setHoldingPriority(.defaultLow, forSubviewAt: 0)
         mainSplit.translatesAutoresizingMaskIntoConstraints = false
+        mainSplit.autosaveName = "MainSplit"
         sidebar.scrollView.widthAnchor.constraint(greaterThanOrEqualToConstant: 150).isActive = true
 
         // Status bar.
@@ -268,11 +270,17 @@ final class MainWindowController: NSWindowController {
         ])
         window.contentView = content
 
-        // Give the detail pane and sidebar sensible starting sizes once laid out.
+        // Give the detail pane and sidebar sensible starting sizes once laid out —
+        // but only when there's no autosaved divider position to restore.
         DispatchQueue.main.async {
-            let h = split.bounds.height
-            if h > 200 { split.setPosition(h - 170, ofDividerAt: 0) }
-            mainSplit.setPosition(190, ofDividerAt: 0)
+            let defaults = UserDefaults.standard
+            if defaults.object(forKey: "NSSplitView Subview Frames DetailSplit") == nil {
+                let h = split.bounds.height
+                if h > 200 { split.setPosition(h - 170, ofDividerAt: 0) }
+            }
+            if defaults.object(forKey: "NSSplitView Subview Frames MainSplit") == nil {
+                mainSplit.setPosition(190, ofDividerAt: 0)
+            }
         }
     }
 
@@ -293,6 +301,12 @@ final class MainWindowController: NSWindowController {
         tableView.autosaveName = "TorrentTable"
         tableView.autosaveTableColumns = true
         tableView.headerView?.menu = columnHeaderMenu()
+
+        // Restore the saved sort order, if any.
+        if let key = UserDefaults.standard.string(forKey: "TorrentSortKey") {
+            let ascending = UserDefaults.standard.bool(forKey: "TorrentSortAscending")
+            tableView.sortDescriptors = [NSSortDescriptor(key: key, ascending: ascending)]
+        }
     }
 
     /// Right-click header menu to show/hide columns and auto-size widths.
@@ -657,6 +671,10 @@ extension MainWindowController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard tableView !== filesTable else { return }
+        if let descriptor = tableView.sortDescriptors.first, let key = descriptor.key {
+            UserDefaults.standard.set(key, forKey: "TorrentSortKey")
+            UserDefaults.standard.set(descriptor.ascending, forKey: "TorrentSortAscending")
+        }
         let ids = selectedTorrentIds()
         sortTorrents()
         rebuildDisplayed()
