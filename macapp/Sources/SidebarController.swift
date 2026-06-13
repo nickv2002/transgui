@@ -148,10 +148,14 @@ final class SidebarController: NSObject {
         for t in torrents { folderCounts[t.normalizedDownloadDir, default: 0] += 1 }
         let folderNode = Node(title: "Folders", group: .folders)
         let folderLabels = disambiguatedFolderLabels(Array(folderCounts.keys))
-        folderNode.children = folderCounts.keys.sorted().map { dir in
-            Node(title: folderLabels[dir] ?? dir,
-                 symbol: "folder", filter: .folder(dir), count: folderCounts[dir] ?? 0)
-        }
+        // Sort by the *displayed* label (the disambiguating suffix), not the full
+        // path, using a natural/localized order so "2024/9" precedes "2024/10".
+        folderNode.children = folderCounts.keys
+            .sorted { (folderLabels[$0] ?? $0).localizedStandardCompare(folderLabels[$1] ?? $1) == .orderedAscending }
+            .map { dir in
+                Node(title: folderLabels[dir] ?? dir,
+                     symbol: "folder", filter: .folder(dir), count: folderCounts[dir] ?? 0)
+            }
 
         let byGroup: [SidebarGroup: Node] = [
             .status: statusNode, .trackers: trackerNode, .folders: folderNode,
