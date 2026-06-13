@@ -97,6 +97,12 @@ struct Torrent: Codable, Sendable, Identifiable, Equatable {
     let queuePosition: Int
     let bandwidthPriorityRaw: Int
     let trackers: [TrackerInfo]
+    let comment: String
+    let errorCode: Int
+    let doneDate: Double
+    let activityDate: Double
+    let downloadedEver: Int64
+    let uploadedEver: Int64
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -120,6 +126,12 @@ struct Torrent: Codable, Sendable, Identifiable, Equatable {
         case queuePosition
         case bandwidthPriorityRaw = "bandwidthPriority"
         case trackers
+        case comment
+        case errorCode = "error"
+        case doneDate
+        case activityDate
+        case downloadedEver
+        case uploadedEver
     }
 
     var status: TorrentStatus { TorrentStatus(rawValue: statusRaw) ?? .stopped }
@@ -151,7 +163,8 @@ struct Torrent: Codable, Sendable, Identifiable, Equatable {
         "leftUntilDone", "rateDownload", "rateUpload", "eta", "uploadRatio",
         "downloadDir", "errorString", "peersConnected", "peersSendingToUs",
         "peersGettingFromUs", "addedDate", "hashString", "queuePosition",
-        "bandwidthPriority", "trackers",
+        "bandwidthPriority", "trackers", "comment", "error", "doneDate",
+        "activityDate", "downloadedEver", "uploadedEver",
     ]
 }
 

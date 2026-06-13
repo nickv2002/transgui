@@ -9,6 +9,13 @@ final class MainWindowController: NSWindowController {
     private let detailLabel = NSTextField(wrappingLabelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
 
+    /// Speed sparkline in the Info tab, and the rolling history that feeds it.
+    private let speedGraph = SpeedGraphView()
+    private var speedHistoryId: Int?
+    private var downHistory: [Int64] = []
+    private var upHistory: [Int64] = []
+    private static let speedHistoryLimit = 60
+
     /// Detail-pane tabs (Info / Files) and the per-file table.
     let detailTabView = NSTabView()
     let filesTable = NSTableView()
@@ -173,12 +180,18 @@ final class MainWindowController: NSWindowController {
         let detailScroll = NSScrollView()
         let detailContainer = NSView()
         detailContainer.addSubview(detailLabel)
+        detailContainer.addSubview(speedGraph)
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
+        speedGraph.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             detailLabel.leadingAnchor.constraint(equalTo: detailContainer.leadingAnchor, constant: 10),
             detailLabel.trailingAnchor.constraint(equalTo: detailContainer.trailingAnchor, constant: -10),
             detailLabel.topAnchor.constraint(equalTo: detailContainer.topAnchor, constant: 8),
-            detailLabel.bottomAnchor.constraint(lessThanOrEqualTo: detailContainer.bottomAnchor, constant: -8),
+            speedGraph.leadingAnchor.constraint(equalTo: detailContainer.leadingAnchor, constant: 10),
+            speedGraph.trailingAnchor.constraint(equalTo: detailContainer.trailingAnchor, constant: -10),
+            speedGraph.topAnchor.constraint(equalTo: detailLabel.bottomAnchor, constant: 8),
+            speedGraph.heightAnchor.constraint(equalToConstant: 52),
+            speedGraph.bottomAnchor.constraint(lessThanOrEqualTo: detailContainer.bottomAnchor, constant: -8),
         ])
         detailScroll.documentView = detailContainer
         detailScroll.hasVerticalScroller = true
@@ -521,27 +534,56 @@ final class MainWindowController: NSWindowController {
             detailLabel.stringValue = selectedTorrents.isEmpty
                 ? "No torrent selected."
                 : "\(selectedTorrents.count) torrents selected."
+            resetSpeedHistory(for: nil)
             return
         }
         let downloaded = t.sizeWhenDone - t.leftUntilDone
+        func dash(_ s: String) -> String { s.isEmpty ? "—" : s }
         var lines: [String] = []
-        lines.append("Name:        \(t.name)")
-        lines.append("Status:      \(t.status.displayName)")
-        if !t.errorString.isEmpty { lines.append("Error:       \(t.errorString)") }
-        lines.append("Progress:    \(Formatters.percent(t.percentDone))")
-        lines.append("Size:        \(Formatters.size(t.totalSize)) (want \(Formatters.size(t.sizeWhenDone)))")
-        lines.append("Downloaded:  \(Formatters.size(downloaded))")
-        lines.append("Ratio:       \(Formatters.ratio(t.uploadRatio))")
-        lines.append("Priority:    \(t.bandwidthPriority.displayName)")
-        lines.append("Queue:       \(t.queuePosition + 1)")
-        lines.append("Download:    \(Formatters.speed(t.rateDownload).isEmpty ? "—" : Formatters.speed(t.rateDownload))")
-        lines.append("Upload:      \(Formatters.speed(t.rateUpload).isEmpty ? "—" : Formatters.speed(t.rateUpload))")
-        lines.append("ETA:         \(Formatters.eta(t.eta).isEmpty ? "—" : Formatters.eta(t.eta))")
-        lines.append("Location:    \(t.downloadDir)")
-        lines.append("Peers:       \(t.peersConnected) connected (↓\(t.peersSendingToUs) ↑\(t.peersGettingFromUs))")
-        lines.append("Added:       \(Formatters.date(t.addedDate))")
-        lines.append("Hash:        \(t.hashString)")
+        lines.append("Name:          \(t.name)")
+        lines.append("Status:        \(t.status.displayName)")
+        if t.hasError {
+            lines.append("Error:         [\(t.errorCode)] \(t.errorString)")
+        }
+        lines.append("Progress:      \(Formatters.percent(t.percentDone))")
+        lines.append("Size:          \(Formatters.size(t.totalSize)) (want \(Formatters.size(t.sizeWhenDone)))")
+        lines.append("Downloaded:    \(Formatters.size(downloaded)) (ever \(Formatters.size(t.downloadedEver)))")
+        lines.append("Uploaded:      \(Formatters.size(t.uploadedEver))")
+        lines.append("Ratio:         \(Formatters.ratio(t.uploadRatio))")
+        lines.append("Priority:      \(t.bandwidthPriority.displayName)")
+        lines.append("Queue:         \(t.queuePosition + 1)")
+        lines.append("Download:      \(dash(Formatters.speed(t.rateDownload)))")
+        lines.append("Upload:        \(dash(Formatters.speed(t.rateUpload)))")
+        lines.append("ETA:           \(dash(Formatters.eta(t.eta)))")
+        lines.append("Location:      \(t.downloadDir)")
+        lines.append("Peers:         \(t.peersConnected) connected (↓\(t.peersSendingToUs) ↑\(t.peersGettingFromUs))")
+        if let host = t.trackerHost { lines.append("Tracker:       \(host)") }
+        lines.append("Added:         \(Formatters.dateTime(t.addedDate))")
+        if t.doneDate > 0 { lines.append("Completed:     \(Formatters.dateTime(t.doneDate))") }
+        lines.append("Last activity: \(Formatters.dateTime(t.activityDate))")
+        if !t.comment.isEmpty { lines.append("Comment:       \(t.comment)") }
+        lines.append("Hash:          \(t.hashString)")
         detailLabel.stringValue = lines.joined(separator: "\n")
+
+        appendSpeedHistory(for: t)
+    }
+
+    /// Reset the speed sparkline (selection changed or nothing selected).
+    private func resetSpeedHistory(for id: Int?) {
+        speedHistoryId = id
+        downHistory = []
+        upHistory = []
+        speedGraph.update(download: [], upload: [])
+    }
+
+    /// Append the selected torrent's current speeds to the rolling history.
+    private func appendSpeedHistory(for t: Torrent) {
+        if speedHistoryId != t.id { resetSpeedHistory(for: t.id) }
+        downHistory.append(t.rateDownload)
+        upHistory.append(t.rateUpload)
+        if downHistory.count > Self.speedHistoryLimit { downHistory.removeFirst() }
+        if upHistory.count > Self.speedHistoryLimit { upHistory.removeFirst() }
+        speedGraph.update(download: downHistory, upload: upHistory)
     }
 
     /// Text shown for a torrent in a given column (shared by the cell view and the

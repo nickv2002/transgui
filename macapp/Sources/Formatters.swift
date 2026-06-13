@@ -51,4 +51,11 @@ enum Formatters {
         let d = Date(timeIntervalSince1970: epoch)
         return DateFormatter.localizedString(from: d, dateStyle: .medium, timeStyle: .short)
     }
+
+    /// Full date + time, used in the detail pane.
+    static func dateTime(_ epoch: Double) -> String {
+        guard epoch > 0 else { return "—" }
+        let d = Date(timeIntervalSince1970: epoch)
+        return DateFormatter.localizedString(from: d, dateStyle: .long, timeStyle: .medium)
+    }
 }
