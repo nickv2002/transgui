@@ -66,7 +66,8 @@ enum SidebarFilter: Equatable, Sendable {
         switch self {
         case .status(let f): return f.matches(t)
         case .tracker(let host): return t.trackerHost == host
-        case .folder(let dir): return t.downloadDir == dir
+        case .folder(let dir):
+            return t.normalizedDownloadDir == Torrent.normalizeDownloadDir(dir)
         }
     }
 

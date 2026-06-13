@@ -154,6 +154,40 @@ struct Torrent: Codable, Sendable, Identifiable, Equatable {
     /// True when the daemon reported a tracker/local error for this torrent.
     var hasError: Bool { !errorString.isEmpty }
 
+    /// ETA string for display. `eta == -1` ("∞") is only meaningful for a torrent
+    /// that is genuinely still downloading; for a completed/seeding/stopped torrent
+    /// there is nothing left to finish, so show "—" instead.
+    var etaDisplay: String {
+        guard percentDone < 1, status == .downloading || status == .downloadWait else {
+            return "—"
+        }
+        return Formatters.eta(eta)
+    }
+
+    /// `downloadDir` normalized so location-equivalent strings collapse into one:
+    /// runs of "/" collapsed and any trailing "/" trimmed (root "/" preserved).
+    /// Two dirs that differ only by a trailing slash (or doubled separators) share
+    /// a single sidebar folder node and filter together.
+    var normalizedDownloadDir: String { Self.normalizeDownloadDir(downloadDir) }
+
+    /// See `normalizedDownloadDir`. Exposed statically so the sidebar filter can
+    /// normalize both sides of a comparison.
+    static func normalizeDownloadDir(_ dir: String) -> String {
+        var result = ""
+        var lastWasSlash = false
+        for ch in dir {
+            if ch == "/" {
+                if lastWasSlash { continue }
+                lastWasSlash = true
+            } else {
+                lastWasSlash = false
+            }
+            result.append(ch)
+        }
+        if result.count > 1 && result.hasSuffix("/") { result.removeLast() }
+        return result
+    }
+
     /// Host of the torrent's primary tracker (e.g. `tracker.example.org`), or nil.
     /// Used to group torrents in the sidebar. Strips a leading `www.`.
     var trackerHost: String? {

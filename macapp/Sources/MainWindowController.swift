@@ -571,7 +571,7 @@ final class MainWindowController: NSWindowController {
         lines.append("Queue:         \(t.queuePosition + 1)")
         lines.append("Download:      \(dash(Formatters.speed(t.rateDownload)))")
         lines.append("Upload:        \(dash(Formatters.speed(t.rateUpload)))")
-        lines.append("ETA:           \(dash(Formatters.eta(t.eta)))")
+        lines.append("ETA:           \(dash(t.etaDisplay))")
         lines.append("Location:      \(t.downloadDir)")
         lines.append("Peers:         \(t.peersConnected) connected (↓\(t.peersSendingToUs) ↑\(t.peersGettingFromUs))")
         if let host = t.trackerHost { lines.append("Tracker:       \(host)") }
@@ -614,7 +614,7 @@ final class MainWindowController: NSWindowController {
         case .progress: return ""
         case .down: return Formatters.speed(t.rateDownload)
         case .up: return Formatters.speed(t.rateUpload)
-        case .eta: return Formatters.eta(t.eta)
+        case .eta: return t.etaDisplay
         case .ratio: return Formatters.ratio(t.uploadRatio)
         case .ratioLimit: return t.seedRatioDisplay
         case .added: return Formatters.date(t.addedDate)
