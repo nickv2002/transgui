@@ -8,6 +8,7 @@ extension MainWindowController: NSToolbarDelegate {
         static let forceStart = NSToolbarItem.Identifier("forceStart")
         static let rename = NSToolbarItem.Identifier("rename")
         static let move = NSToolbarItem.Identifier("move")
+        static let search = NSToolbarItem.Identifier("search")
     }
 
     func buildToolbar() {
@@ -20,7 +21,7 @@ extension MainWindowController: NSToolbarDelegate {
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [ToolbarID.start, ToolbarID.stop, ToolbarID.forceStart,
-         .flexibleSpace, ToolbarID.rename, ToolbarID.move]
+         ToolbarID.rename, ToolbarID.move, .flexibleSpace, ToolbarID.search]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -30,6 +31,18 @@ extension MainWindowController: NSToolbarDelegate {
     func toolbar(_ toolbar: NSToolbar,
                  itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        // The live-filter search box.
+        if itemIdentifier == ToolbarID.search {
+            let item = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
+            item.searchField.placeholderString = "Filter by name"
+            item.searchField.sendsWholeSearchString = false
+            item.searchField.sendsSearchStringImmediately = true
+            item.searchField.target = self
+            item.searchField.action = #selector(searchChanged(_:))
+            searchField = item.searchField
+            return item
+        }
+
         let spec: (label: String, symbol: String, action: Selector)?
         switch itemIdentifier {
         case ToolbarID.start: spec = ("Start", "play.fill", #selector(startSelected(_:)))
@@ -73,6 +86,8 @@ extension MainWindowController: NSToolbarDelegate {
     }
 
     private func validate(action: Selector?) -> Bool {
+        // The search field is always enabled, regardless of row selection.
+        if action == #selector(searchChanged(_:)) { return true }
         let selection = selectionForAction()
         guard !selection.isEmpty else { return false }
         switch action {

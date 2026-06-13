@@ -9,7 +9,25 @@ final class MainWindowController: NSWindowController {
     private let detailLabel = NSTextField(wrappingLabelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
 
+    /// Full sorted model — every torrent from the server.
     var torrents: [Torrent] = []
+
+    /// What the table actually renders: `torrents` after applying `filterText`.
+    /// Keeping this derived list lets the search filter the view without touching
+    /// the model, the refresh loop, or the sort.
+    private var displayed: [Torrent] = []
+
+    /// Current search text; empty means "show everything".
+    private var filterText = ""
+
+    /// The toolbar's search field, retained so ⌘F can focus it.
+    weak var searchField: NSSearchField?
+
+    /// Make the toolbar search field first responder (wired to the ⌘F Find menu).
+    func focusSearch() {
+        guard let searchField else { return }
+        window?.makeFirstResponder(searchField)
+    }
 
     // Column identifiers double as sort keys.
     private enum Column: String, CaseIterable {
@@ -197,14 +215,38 @@ final class MainWindowController: NSWindowController {
         let selectedIds = selectedTorrentIds()
         torrents = incoming
         sortTorrents()
+        rebuildDisplayed()
         tableView.reloadData()
+        restoreSelection(selectedIds)
+        updateDetail()
+        updateStatusBar(state: refresh.state)
+        window?.toolbar?.validateVisibleItems()
+    }
 
-        if !selectedIds.isEmpty {
-            let rows = IndexSet(torrents.enumerated()
-                .filter { selectedIds.contains($0.element.id) }
-                .map { $0.offset })
-            tableView.selectRowIndexes(rows, byExtendingSelection: false)
-        }
+    /// Recompute the rendered list from `torrents` + `filterText`. Exact,
+    /// case-insensitive substring match on the name. (Future: fuzzy/subsequence
+    /// matching with ranking — see the project memory.)
+    private func rebuildDisplayed() {
+        displayed = filterText.isEmpty
+            ? torrents
+            : torrents.filter { $0.name.localizedCaseInsensitiveContains(filterText) }
+    }
+
+    private func restoreSelection(_ ids: Set<Int>) {
+        guard !ids.isEmpty else { return }
+        let rows = IndexSet(displayed.enumerated()
+            .filter { ids.contains($0.element.id) }
+            .map { $0.offset })
+        tableView.selectRowIndexes(rows, byExtendingSelection: false)
+    }
+
+    /// Live filtering as the user types in the toolbar search field.
+    @objc func searchChanged(_ sender: NSSearchField) {
+        let selectedIds = selectedTorrentIds()
+        filterText = sender.stringValue
+        rebuildDisplayed()
+        tableView.reloadData()
+        restoreSelection(selectedIds)
         updateDetail()
         updateStatusBar(state: refresh.state)
         window?.toolbar?.validateVisibleItems()
@@ -226,7 +268,10 @@ final class MainWindowController: NSWindowController {
         let rates = [down.isEmpty ? nil : "↓ \(down)", up.isEmpty ? nil : "↑ \(up)"]
             .compactMap { $0 }.joined(separator: "   ")
 
-        var parts = ["\(torrents.count) torrents", connection]
+        let count = filterText.isEmpty
+            ? "\(torrents.count) torrents"
+            : "\(displayed.count) of \(torrents.count) torrents"
+        var parts = [count, connection]
         if !rates.isEmpty { parts.insert(rates, at: 1) }
         statusLabel.stringValue = parts.joined(separator: "      ")
     }
@@ -260,18 +305,18 @@ final class MainWindowController: NSWindowController {
 
     private func selectedTorrentIds() -> Set<Int> {
         Set(tableView.selectedRowIndexes.compactMap { row in
-            torrents.indices.contains(row) ? torrents[row].id : nil
+            displayed.indices.contains(row) ? displayed[row].id : nil
         })
     }
 
     var selectedTorrents: [Torrent] {
         tableView.selectedRowIndexes.compactMap { row in
-            torrents.indices.contains(row) ? torrents[row] : nil
+            displayed.indices.contains(row) ? displayed[row] : nil
         }
     }
 
     func torrentAt(row: Int) -> Torrent? {
-        torrents.indices.contains(row) ? torrents[row] : nil
+        displayed.indices.contains(row) ? displayed[row] : nil
     }
 
     // MARK: - Detail pane
@@ -333,14 +378,14 @@ final class MainWindowController: NSWindowController {
 // MARK: - Table data source / delegate
 
 extension MainWindowController: NSTableViewDataSource, NSTableViewDelegate {
-    func numberOfRows(in tableView: NSTableView) -> Int { torrents.count }
+    func numberOfRows(in tableView: NSTableView) -> Int { displayed.count }
 
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         let ids = selectedTorrentIds()
         sortTorrents()
+        rebuildDisplayed()
         tableView.reloadData()
-        let rows = IndexSet(torrents.enumerated().filter { ids.contains($0.element.id) }.map { $0.offset })
-        tableView.selectRowIndexes(rows, byExtendingSelection: false)
+        restoreSelection(ids)
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
@@ -350,8 +395,8 @@ extension MainWindowController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let tableColumn, let column = Column(rawValue: tableColumn.identifier.rawValue),
-              torrents.indices.contains(row) else { return nil }
-        let t = torrents[row]
+              displayed.indices.contains(row) else { return nil }
+        let t = displayed[row]
 
         if column == .progress {
             let cell = (tableView.makeView(withIdentifier: ProgressCellView.reuseIdentifier, owner: self) as? ProgressCellView)

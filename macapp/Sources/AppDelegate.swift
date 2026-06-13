@@ -46,6 +46,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.activateFileViewerSelecting([ConfigLoader.configURL])
     }
 
+    @objc private func findInList(_ sender: Any?) {
+        windowController?.focusSearch()
+    }
+
     private func presentStartupError(_ error: Error) {
         let alert = NSAlert()
         alert.alertStyle = .critical
@@ -93,6 +97,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(.separator())
+        let find = editMenu.addItem(withTitle: "Find", action: #selector(findInList(_:)), keyEquivalent: "f")
+        find.target = self
         editMenuItem.submenu = editMenu
 
         NSApp.mainMenu = mainMenu
