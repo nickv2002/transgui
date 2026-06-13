@@ -12,26 +12,44 @@ legacy Free Pascal / Lazarus app that fills the rest of this repo.
 - All native work happens **on branch `mac-native-mvp`**, inside `macapp/`.
 - Scope is a deliberately minimal MVP for the owner's daily use — not feature parity.
 
-## Current status (MVP complete + verified)
+## Current status (feature-parity pass complete)
 
-Done and verified end-to-end against the owner's real server (~1040 torrents,
-Transmission 4.1.2): connect to one server, live torrent list with progress,
-sortable columns (incl. a queue-position `#` column), **start / stop / force-start
-/ rename / move / verify(recheck) / queue-move (top/up/down/bottom) / bandwidth
-priority (high/normal/low) / remove**, a detail pane (now incl. priority + queue),
-and a name search box in the toolbar whose **match mode toggles between fuzzy
-(subsequence, ranked by quality, e.g. `ppgrl` → papergirls) and exact substring**
-via the native magnifying-glass dropdown menu (`searchMenuTemplate`; the active
-mode is checkmarked through `validateMenuItem`).
+Done and verified against the owner's real server (~1040 torrents, Transmission
+4.1.2). Core MVP: connect, live torrent list with a state-coloured progress bar,
+sortable columns, **start / stop / force-start / rename / move / verify / queue-move
+/ bandwidth priority / remove**, and a fuzzy/exact toolbar search.
 
-- **Remove** has a two-step confirmation; "Remove + Data" requires a second
-  critical confirm. The data-deleting path was intentionally **not** fired against
-  the owner's prod server — every other mutating RPC (`torrent-set bandwidthPriority`,
-  `queue-move-*`, `torrent-verify`) was tested live and state restored.
+All `feature-ranking.md` items above "Other stuff not worth doing yet" are now
+implemented:
+
+- **Files tab** — tabbed detail pane (Info / Files); per-file table with a wanted
+  checkbox (`files-wanted`/`files-unwanted`), size, live progress, and priority
+  (`priority-*`). Fetched on demand per selected torrent, refreshed on the poll.
+- **Add torrents** — Add toolbar pull-down + File-menu (⌘O file, ⌘L magnet/URL),
+  drag-and-drop onto the window, and Dock/Open-With (`CFBundleDocumentTypes` in
+  `Info.plist`). Shared options sheet (destination prefilled from session
+  download-dir, Start-when-added) → `torrent-add` with duplicate detection.
+- **Sidebar filter groups** — source-list `NSOutlineView`: Status / Trackers /
+  Folders with live counts (native take on `filtering.pas`). Applied before search.
+- **Column customization** — Size / Added / Tracker columns (hidden by default),
+  all sortable; right-click header menu toggles visibility + Auto-Size; reordering
+  and column state persist.
+- **Aggregate status bar + free-space** — per-status counts and the download dir's
+  free space (`free-space` RPC).
+- **Info tab polish** — comment, full dates, error detail, downloaded/uploaded-ever,
+  tracker, and a download/upload speed sparkline.
+- **Persistence** — window frame, split positions, column order/width/visibility,
+  and sort descriptor all persist across launches.
+
+Deferred (need extra RPC/model work): label filtering + Labels/Ratio-limit columns.
+
+- **Remove**'s data-deleting path and the per-file wanted/priority **writes** were
+  intentionally **not** fired against the owner's prod server. Read paths and
+  non-destructive RPCs (`torrent-get files/fileStats`, `free-space`, `torrent-add`
+  duplicate) were validated live.
 
 - Plan of record: `../.context/mac-port-plan.md`
-- Feature backlog (next things to build, being ranked by the owner):
-  `../.context/feature-backlog.md` (also mirrored at `TODO.md`)
+- Feature backlog: `../.context/feature-ranking.md`
 
 ## Layout (`macapp/Sources/`)
 
@@ -39,13 +57,18 @@ mode is checkmarked through `validateMenuItem`).
 - `AppDelegate.swift` — app lifecycle, menus (Reload Config, Find ⌘F, Edit).
 - `MainWindowController.swift` — window, `NSTableView`, detail pane, status bar,
   sorting, search/filter (`displayed` is the filtered view of the `torrents` model).
-- `MainWindowController+Actions.swift` — toolbar, context menu, the action methods
-  (start/stop/force-start/rename/move), and the search toolbar item.
+- `MainWindowController+Actions.swift` — toolbar (incl. Add pull-down), context
+  menu, action methods, and the search toolbar item.
+- `MainWindowController+Files.swift` — the Files tab table + wanted/priority actions.
+- `MainWindowController+Add.swift` — add-torrent flows (file/magnet/drag) + `DropView`.
+- `SidebarController.swift` — the source-list filter sidebar (`NSOutlineView`).
+- `Filtering.swift` — `StatusFilter` / `SidebarFilter` (filter predicates).
 - `TransmissionClient.swift` — `actor` over `URLSession`; HTTP Basic auth + the
   **409 / `X-Transmission-Session-Id` CSRF retry**; typed RPC wrappers.
 - `RefreshController.swift` — `@MainActor` poll loop (~4s), connection state,
-  pause-on-minimize.
-- `Models.swift`, `AppConfig.swift`, `Formatters.swift`, `ProgressCellView.swift`.
+  pause-on-minimize, default download-dir + free-space.
+- `Models.swift`, `AppConfig.swift`, `Formatters.swift`, `ProgressCellView.swift`,
+  `SpeedGraphView.swift`.
 
 Project is generated by **XcodeGen** from `project.yml` (committed). The generated
 `.xcodeproj` and `build/` are gitignored.
