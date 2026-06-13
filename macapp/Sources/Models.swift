@@ -207,3 +207,30 @@ struct TorrentFilesEntry: Decodable, Sendable {
 struct TorrentFilesArguments: Decodable, Sendable {
     let torrents: [TorrentFilesEntry]
 }
+
+// MARK: - torrent-add
+
+/// The torrent named in a `torrent-add` response (under `torrent-added` or
+/// `torrent-duplicate`).
+struct AddedTorrent: Decodable, Sendable {
+    let id: Int?
+    let name: String?
+    let hashString: String?
+}
+
+/// Decoded `arguments` for `torrent-add`. Exactly one of these is present.
+struct AddArguments: Decodable, Sendable {
+    let added: AddedTorrent?
+    let duplicate: AddedTorrent?
+
+    enum CodingKeys: String, CodingKey {
+        case added = "torrent-added"
+        case duplicate = "torrent-duplicate"
+    }
+}
+
+/// Outcome of an add request, surfaced to the UI.
+struct AddOutcome: Sendable {
+    let name: String
+    let duplicate: Bool
+}

@@ -24,6 +24,7 @@ targets:
         PRODUCT_NAME: "Transmission Remote"
         PRODUCT_BUNDLE_IDENTIFIER: com.nickvance.transmission-remote-mac
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Info.plist
         INFOPLIST_KEY_CFBundleIconFile: AppIcon
         INFOPLIST_KEY_NSPrincipalClass: NSApplication
         INFOPLIST_KEY_NSHumanReadableCopyright: ""

@@ -3,6 +3,7 @@ import AppKit
 /// Toolbar, context menu, and the start/stop/force-start/rename/move actions.
 extension MainWindowController: NSToolbarDelegate {
     private enum ToolbarID {
+        static let add = NSToolbarItem.Identifier("add")
         static let start = NSToolbarItem.Identifier("start")
         static let stop = NSToolbarItem.Identifier("stop")
         static let forceStart = NSToolbarItem.Identifier("forceStart")
@@ -22,7 +23,8 @@ extension MainWindowController: NSToolbarDelegate {
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.start, ToolbarID.stop, ToolbarID.forceStart,
+        [ToolbarID.add, .space,
+         ToolbarID.start, ToolbarID.stop, ToolbarID.forceStart,
          ToolbarID.rename, ToolbarID.move, ToolbarID.verify, ToolbarID.remove,
          .flexibleSpace, ToolbarID.search]
     }
@@ -47,6 +49,18 @@ extension MainWindowController: NSToolbarDelegate {
             return item
         }
 
+        // The Add pull-down: primary click adds a file; the menu offers file/link.
+        if itemIdentifier == ToolbarID.add {
+            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "Add"
+            item.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")
+            item.isBordered = true
+            item.target = self
+            item.action = #selector(addFile(_:))
+            item.menu = addMenu()
+            return item
+        }
+
         let spec: (label: String, symbol: String, action: Selector)?
         switch itemIdentifier {
         case ToolbarID.start: spec = ("Start", "play.fill", #selector(startSelected(_:)))
@@ -67,6 +81,16 @@ extension MainWindowController: NSToolbarDelegate {
         item.action = spec.action
         item.isBordered = true
         return item
+    }
+
+    /// Pull-down for the Add toolbar item: torrent file or magnet/URL.
+    private func addMenu() -> NSMenu {
+        let menu = NSMenu()
+        let file = menu.addItem(withTitle: "Add Torrent File…", action: #selector(addFile(_:)), keyEquivalent: "")
+        file.target = self
+        let link = menu.addItem(withTitle: "Add Magnet or URL…", action: #selector(addLink(_:)), keyEquivalent: "")
+        link.target = self
+        return menu
     }
 
     /// The magnifying-glass dropdown menu inside the search field: pick the match
@@ -153,6 +177,8 @@ extension MainWindowController: NSToolbarDelegate {
     private func validate(action: Selector?) -> Bool {
         // The search field is always enabled, regardless of row selection.
         if action == #selector(searchChanged(_:)) { return true }
+        // Adding is always available (independent of the row selection).
+        if action == #selector(addFile(_:)) || action == #selector(addLink(_:)) { return true }
         let selection = selectionForAction()
         guard !selection.isEmpty else { return false }
         switch action {

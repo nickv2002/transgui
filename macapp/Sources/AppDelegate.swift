@@ -27,6 +27,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
+    /// Dock drop / "Open With" of `.torrent` files.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        windowController?.addFiles(urls)
+    }
+
+    // MARK: - Add menu forwarding
+
+    @objc private func addTorrentFile(_ sender: Any?) { windowController?.addFile(sender) }
+    @objc private func addTorrentLink(_ sender: Any?) { windowController?.addLink(sender) }
+
     // MARK: - Menu actions
 
     @objc private func reloadConfig(_ sender: Any?) {
@@ -81,6 +91,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fileMenuItem = NSMenuItem()
         mainMenu.addItem(fileMenuItem)
         let fileMenu = NSMenu(title: "File")
+        let addFile = fileMenu.addItem(withTitle: "Add Torrent File…",
+                                       action: #selector(addTorrentFile(_:)), keyEquivalent: "o")
+        addFile.target = self
+        let addLink = fileMenu.addItem(withTitle: "Add Magnet or URL…",
+                                       action: #selector(addTorrentLink(_:)), keyEquivalent: "l")
+        addLink.target = self
+        fileMenu.addItem(.separator())
         let reload = fileMenu.addItem(withTitle: "Reload Config",
                                       action: #selector(reloadConfig(_:)), keyEquivalent: "r")
         reload.target = self

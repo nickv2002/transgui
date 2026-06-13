@@ -21,6 +21,10 @@ final class RefreshController {
 
     /// The live client, if connected — used by one-shot actions (start/stop/etc.).
     var activeClient: TransmissionClient? { client }
+
+    /// The daemon's default download directory (from `session-get`), used to
+    /// prefill the Add-torrent destination. Updated on each session handshake.
+    private(set) var defaultDownloadDir: String?
     private var loopTask: Task<Void, Never>?
     private var paused = false
     private(set) var state: State = .idle {
@@ -77,6 +81,7 @@ final class RefreshController {
         // Initial session handshake to confirm connectivity / surface auth errors.
         do {
             let info = try await client.fetchSession()
+            defaultDownloadDir = info.downloadDir
             state = .connected(version: info.version)
         } catch {
             state = .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
@@ -97,6 +102,7 @@ final class RefreshController {
             // A successful poll also confirms we're connected.
             if case .connected = state {} else {
                 let info = try? await client.fetchSession()
+                defaultDownloadDir = info?.downloadDir
                 state = .connected(version: info?.version ?? "?")
             }
             onTorrents?(torrents)

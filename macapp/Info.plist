@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Base Info.plist. The remaining keys (bundle id, icon, principal class, etc.)
+	  are generated from INFOPLIST_KEY_* in project.yml and merged in by Xcode
+	  (GENERATE_INFOPLIST_FILE = YES). This file exists only to declare that we
+	  open .torrent documents, which has no INFOPLIST_KEY_ equivalent.
+	-->
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>BitTorrent Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.bittorrent.torrent</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

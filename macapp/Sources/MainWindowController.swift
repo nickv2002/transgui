@@ -208,7 +208,9 @@ final class MainWindowController: NSWindowController {
         // Explicit constraints: split fills the window above a fixed-height status
         // bar. (An NSStackView here collapsed the split — and the table inside it —
         // to zero height because the split view has no intrinsic content size.)
-        let content = NSView()
+        let content = DropView()
+        content.onDropFiles = { [weak self] urls in self?.addFiles(urls) }
+        content.onDropText = { [weak self] text in self?.addDroppedText(text) }
         content.addSubview(split)
         content.addSubview(statusBar)
         NSLayoutConstraint.activate([

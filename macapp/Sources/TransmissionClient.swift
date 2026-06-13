@@ -159,6 +159,23 @@ actor TransmissionClient {
         )
     }
 
+    /// Add a torrent from base64 `.torrent` contents (`metainfo`) or a
+    /// magnet/URL (`filename`). Returns the resulting torrent name and whether the
+    /// daemon reported it as a duplicate.
+    func addTorrent(metainfoBase64: String?, filename: String?,
+                    downloadDir: String?, paused: Bool) async throws -> AddOutcome {
+        var args: [String: Any] = ["paused": paused]
+        if let metainfoBase64 { args["metainfo"] = metainfoBase64 }
+        if let filename { args["filename"] = filename }
+        if let downloadDir, !downloadDir.isEmpty { args["download-dir"] = downloadDir }
+
+        let response: RPCResponse<AddArguments> = try await send(method: "torrent-add", arguments: args)
+        if let dup = response.arguments?.duplicate {
+            return AddOutcome(name: dup.name ?? "torrent", duplicate: true)
+        }
+        return AddOutcome(name: response.arguments?.added?.name ?? "torrent", duplicate: false)
+    }
+
     // MARK: - Core
 
     /// A response whose `arguments` we don't need to inspect.
