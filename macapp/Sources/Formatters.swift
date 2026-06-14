@@ -54,12 +54,16 @@ enum Formatters {
         return DateFormatter.localizedString(from: d, dateStyle: .short, timeStyle: .none)
     }
 
-    /// Compact numeric date *with* time (e.g. `6/13/26, 3:45 PM`), region-aware.
+    /// Compact numeric date *with* time (e.g. `6/13/26 3:45 PM`), region-aware.
     /// The middle Added-column form between `compactDate` and the full `date`.
+    /// The date and time parts are formatted separately and joined with a space so
+    /// there's no locale date/time separator (the comma in `6/13/26, 3:45 PM`).
     static func compactDateTime(_ epoch: Double) -> String {
         guard epoch > 0 else { return "—" }
         let d = Date(timeIntervalSince1970: epoch)
-        return DateFormatter.localizedString(from: d, dateStyle: .short, timeStyle: .short)
+        let date = DateFormatter.localizedString(from: d, dateStyle: .short, timeStyle: .none)
+        let time = DateFormatter.localizedString(from: d, dateStyle: .none, timeStyle: .short)
+        return "\(date) \(time)"
     }
 
     /// Full date + time (e.g. `Jun 13, 2026, 3:45 PM`). The default Added-column
