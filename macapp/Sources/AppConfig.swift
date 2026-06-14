@@ -44,9 +44,10 @@ struct ServerConfig: Codable, Sendable, Equatable {
         useHTTPS: false, rpcPath: "/transmission/rpc")
 }
 
-/// User-editable app config. Loaded from a JSONC file under
-/// `~/.config/transmission-remote-mac/config.jsonc`. Holds the list of named
-/// servers, the active one, and the poll interval.
+/// App configuration: the list of named servers, the active one, and the poll
+/// interval. Persisted natively as JSON under Application Support by
+/// `PreferencesStore` (migrated from the legacy JSONC file on first run) and
+/// edited through the native Settings window.
 struct AppConfig: Codable, Sendable, Equatable {
     var servers: [ServerConfig]
     var refreshSeconds: Double
@@ -63,6 +64,10 @@ struct AppConfig: Codable, Sendable, Equatable {
         self.refreshSeconds = max(1, refreshSeconds)
         self.currentServer = currentServer
     }
+
+    /// The built-in default config used when nothing is stored yet.
+    static let `default` = AppConfig(servers: [.localhost], refreshSeconds: 4,
+                                     currentServer: ServerConfig.localhost.name)
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -90,109 +95,91 @@ enum ConfigError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unreadable(let detail): return "Could not read the config file: \(detail)"
-        case .malformed(let detail): return "The config file is not valid: \(detail)"
+        case .unreadable(let detail): return "Could not read the preferences file: \(detail)"
+        case .malformed(let detail): return "The preferences file is not valid: \(detail)"
         }
     }
 }
 
-enum ConfigLoader {
-    /// `~/.config/transmission-remote-mac/config.jsonc`
-    static var configURL: URL {
-        let base = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config", isDirectory: true)
-            .appendingPathComponent("transmission-remote-mac", isDirectory: true)
-        return base.appendingPathComponent("config.jsonc", isDirectory: false)
+/// Native preferences store. Persists `AppConfig` as JSON under
+/// `~/Library/Application Support/Transmission Remote/preferences.json` (a
+/// standard macOS location), replacing the old hand-edited JSONC file. On first
+/// run it migrates any legacy JSONC config so an existing server list (including
+/// credentials) carries over automatically.
+enum PreferencesStore {
+    /// The Application Support folder for this app.
+    static var supportDirectory: URL {
+        let base = (try? FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: false))
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+        return base.appendingPathComponent("Transmission Remote", isDirectory: true)
     }
 
-    /// Loads the config, creating an annotated template on first run.
+    /// `~/Library/Application Support/Transmission Remote/preferences.json`
+    static var storeURL: URL {
+        supportDirectory.appendingPathComponent("preferences.json", isDirectory: false)
+    }
+
+    /// The legacy JSONC file we migrate from (and then leave in place as a backup).
+    static var legacyConfigURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config", isDirectory: true)
+            .appendingPathComponent("transmission-remote-mac", isDirectory: true)
+            .appendingPathComponent("config.jsonc", isDirectory: false)
+    }
+
+    /// Load the stored preferences, migrating from legacy JSONC or seeding a
+    /// default on first run. Always leaves a `preferences.json` on disk afterward.
     static func load() throws -> AppConfig {
-        let url = configURL
-        if !FileManager.default.fileExists(atPath: url.path) {
-            try createTemplate(at: url)
+        let fm = FileManager.default
+
+        if fm.fileExists(atPath: storeURL.path) {
+            let data: Data
+            do {
+                data = try Data(contentsOf: storeURL)
+            } catch {
+                throw ConfigError.unreadable(error.localizedDescription)
+            }
+            do {
+                return try JSONDecoder().decode(AppConfig.self, from: data)
+            } catch {
+                throw ConfigError.malformed(error.localizedDescription)
+            }
         }
 
-        let data: Data
+        // First run for the native store: migrate the legacy JSONC if present,
+        // otherwise start from the built-in default.
+        let migrated = (try? loadLegacyJSONC()) ?? .default
+        try save(migrated)
+        return migrated
+    }
+
+    /// Persist the config as pretty-printed JSON, creating the support folder.
+    static func save(_ config: AppConfig) throws {
+        let fm = FileManager.default
         do {
-            data = try Data(contentsOf: url)
+            try fm.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(config)
+            try data.write(to: storeURL, options: .atomic)
         } catch {
             throw ConfigError.unreadable(error.localizedDescription)
         }
+    }
 
+    /// Read the legacy JSONC config, or nil if there is no legacy file.
+    static func loadLegacyJSONC() throws -> AppConfig? {
+        let url = legacyConfigURL
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let data = try Data(contentsOf: url)
         // JSONDecoder has no comment support, so normalize JSONC → object via
         // JSONSerialization's JSON5 reader (handles // /* */ comments and
         // trailing commas), then re-encode and decode into the typed struct.
-        let object: Any
-        do {
-            object = try JSONSerialization.jsonObject(with: data, options: [.json5Allowed])
-        } catch {
-            throw ConfigError.malformed(error.localizedDescription)
-        }
-
-        do {
-            let normalized = try JSONSerialization.data(withJSONObject: object)
-            return try JSONDecoder().decode(AppConfig.self, from: normalized)
-        } catch {
-            throw ConfigError.malformed(error.localizedDescription)
-        }
+        let object = try JSONSerialization.jsonObject(with: data, options: [.json5Allowed])
+        let normalized = try JSONSerialization.data(withJSONObject: object)
+        return try JSONDecoder().decode(AppConfig.self, from: normalized)
     }
-
-    private static func createTemplate(at url: URL) throws {
-        do {
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            try Self.template.write(to: url, atomically: true, encoding: .utf8)
-        } catch {
-            throw ConfigError.unreadable(error.localizedDescription)
-        }
-    }
-
-    private static let template = """
-    // Transmission Remote — connection config.
-    // Edit this file, then choose "Reload Config" from the app menu.
-    {
-        // One or more Transmission servers. Pick the active one from the
-        // "Server" menu in the app (the choice persists across launches).
-        "servers": [
-            {
-                // Display name shown in the Server menu.
-                "name": "Local",
-
-                // Hostname or IP of the machine running the Transmission daemon.
-                "host": "localhost",
-
-                // RPC port (Transmission default is 9091).
-                "port": 9091,
-
-                // Use HTTPS instead of plain HTTP.
-                "useHTTPS": false,
-
-                // RPC path. Leave as-is unless your server uses a custom path.
-                "rpcPath": "/transmission/rpc",
-
-                // Credentials. Leave username empty if the daemon has no auth.
-                // NOTE: stored in plaintext for now; a future version will use the Keychain.
-                "username": "",
-                "password": ""
-            },
-            {
-                "name": "Remote",
-                "host": "192.168.1.10",
-                "port": 9091,
-                "useHTTPS": false,
-                "rpcPath": "/transmission/rpc",
-                "username": "",
-                "password": ""
-            }
-        ],
-
-        // Which server to connect to by name on first launch.
-        "currentServer": "Local",
-
-        // How often to poll the server for torrent updates, in seconds.
-        "refreshSeconds": 4
-    }
-    """
 }

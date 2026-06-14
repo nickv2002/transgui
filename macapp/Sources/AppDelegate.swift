@@ -5,14 +5,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowController: MainWindowController?
     /// The Server menu's submenu, rebuilt on demand from the configured servers.
     private let serverMenu = NSMenu(title: "Server")
+    /// The native Settings window, created lazily on first open.
+    private var settingsController: SettingsWindowController?
+    /// The live app config (servers + poll interval), kept in sync with the
+    /// preferences store and the Settings window.
+    private var config = AppConfig.default
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         setupMainMenu()
 
-        let config: AppConfig
         do {
-            config = try ConfigLoader.load()
+            config = try PreferencesStore.load()
         } catch {
             presentStartupError(error)
             return
@@ -49,22 +53,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Menu actions
 
-    @objc private func reloadConfig(_ sender: Any?) {
-        do {
-            let config = try ConfigLoader.load()
-            windowController?.applyConfig(config)
-            rebuildServerMenu()
-        } catch {
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = "Could not reload config"
-            alert.informativeText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            alert.runModal()
+    /// Open (or focus) the native Settings window. Edits are persisted to the
+    /// preferences store and applied to the live connection immediately.
+    @objc private func showSettings(_ sender: Any?) {
+        if settingsController == nil {
+            let controller = SettingsWindowController(config: config)
+            controller.onChange = { [weak self] updated in
+                guard let self else { return }
+                self.config = updated
+                do {
+                    try PreferencesStore.save(updated)
+                } catch {
+                    NSLog("Failed to save preferences: \(error.localizedDescription)")
+                }
+                self.windowController?.applyConfig(updated)
+                self.rebuildServerMenu()
+            }
+            settingsController = controller
         }
+        settingsController?.showWindow(nil)
+        settingsController?.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
-    @objc private func revealConfig(_ sender: Any?) {
-        NSWorkspace.shared.activateFileViewerSelecting([ConfigLoader.configURL])
+    @objc private func revealPreferences(_ sender: Any?) {
+        NSWorkspace.shared.activateFileViewerSelecting([PreferencesStore.storeURL])
     }
 
     @objc private func findInList(_ sender: Any?) {
@@ -94,6 +107,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(withTitle: "About \(appName)",
                         action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
+        // Standard "Settings…" (⌘,) opens the native preferences window.
+        let settings = appMenu.addItem(withTitle: "Settings…",
+                        action: #selector(showSettings(_:)), keyEquivalent: ",")
+        settings.target = self
+        appMenu.addItem(.separator())
         // Standard Hide / Hide Others / Show All (⌘H, ⌥⌘H). Without these explicit
         // items the key equivalents are unbound and ⌘H does nothing.
         appMenu.addItem(withTitle: "Hide \(appName)",
@@ -119,11 +137,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                        action: #selector(addTorrentLink(_:)), keyEquivalent: "l")
         addLink.target = self
         fileMenu.addItem(.separator())
-        let reload = fileMenu.addItem(withTitle: "Reload Config",
-                                      action: #selector(reloadConfig(_:)), keyEquivalent: "r")
-        reload.target = self
-        let reveal = fileMenu.addItem(withTitle: "Reveal Config in Finder",
-                                      action: #selector(revealConfig(_:)), keyEquivalent: "")
+        let reveal = fileMenu.addItem(withTitle: "Reveal Preferences in Finder",
+                                      action: #selector(revealPreferences(_:)), keyEquivalent: "")
         reveal.target = self
         fileMenuItem.submenu = fileMenu
 
