@@ -210,12 +210,11 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func buildServerForm() -> NSView {
-        for field in [nameField, hostField, portField, rpcPathField, usernameField] {
+        for field in [nameField, hostField, portField, rpcPathField, usernameField, passwordField] {
             field.target = self
-            field.action = #selector(serverFieldChanged)
+            field.action = #selector(serverFieldChanged)   // fires on end-editing (Tab/Return/focus loss)
+            field.delegate = self                            // controlTextDidChange → live per-keystroke
         }
-        passwordField.target = self
-        passwordField.action = #selector(serverFieldChanged)
         httpsCheckbox.target = self
         httpsCheckbox.action = #selector(serverFieldChanged)
         portField.placeholderString = "9091"
@@ -247,6 +246,7 @@ final class SettingsWindowController: NSWindowController {
         refreshField.translatesAutoresizingMaskIntoConstraints = false
         refreshField.target = self
         refreshField.action = #selector(refreshChanged)
+        refreshField.delegate = self
         refreshField.widthAnchor.constraint(equalToConstant: 60).isActive = true
 
         refreshStepper.target = self
@@ -433,11 +433,55 @@ final class SettingsWindowController: NSWindowController {
         updateDirtyState()
     }
 
+    // MARK: - Live field editing
+
+    /// Build a `ServerConfig` from the form's current text (used by Test
+    /// Connection so the user can test edits before saving). Returns nil when no
+    /// server row is selected.
+    private func currentServerFromFields() -> ServerConfig? {
+        guard selectedIndex != nil else { return nil }
+        let name = nameField.stringValue.trimmingCharacters(in: .whitespaces)
+        let host = hostField.stringValue.trimmingCharacters(in: .whitespaces)
+        let path = rpcPathField.stringValue.trimmingCharacters(in: .whitespaces)
+        return ServerConfig(
+            name: name.isEmpty ? host : name,
+            host: host,
+            port: Int(portField.stringValue) ?? 9091,
+            useHTTPS: httpsCheckbox.state == .on,
+            rpcPath: path.isEmpty ? "/transmission/rpc" : path,
+            username: usernameField.stringValue.isEmpty ? nil : usernameField.stringValue,
+            password: passwordField.stringValue.isEmpty ? nil : passwordField.stringValue)
+    }
+
+    /// Sync the selected server from the form's current text on every keystroke,
+    /// so Save enables immediately (the field's target/action only fires on
+    /// end-editing). Kept light: no trimming/uniqueness reset while typing — that
+    /// normalization happens on end-editing in `serverFieldChanged`.
+    private func liveSyncSelectedServer() {
+        guard let i = selectedIndex else { return }
+        var s = config.servers[i]
+        let oldName = s.name
+        s.name = nameField.stringValue
+        s.host = hostField.stringValue
+        s.port = Int(portField.stringValue) ?? s.port
+        s.useHTTPS = httpsCheckbox.state == .on
+        s.rpcPath = rpcPathField.stringValue
+        s.username = usernameField.stringValue.isEmpty ? nil : usernameField.stringValue
+        s.password = passwordField.stringValue.isEmpty ? nil : passwordField.stringValue
+        if s.name != oldName, config.currentServer == oldName {
+            config.currentServer = s.name
+        }
+        config.servers[i] = s
+        reloadServerList()
+        reloadDefaultServerPopup()
+        updateDirtyState()
+    }
+
     // MARK: - Test Connection
 
     @objc private func testConnection() {
-        guard let i = selectedIndex else { return }
-        let server = config.servers[i]
+        // Test exactly what's typed in the form right now, even if not yet saved.
+        guard let server = currentServerFromFields() else { return }
         testButton.isEnabled = false
         testSpinner.startAnimation(nil)
 
@@ -472,6 +516,23 @@ final class SettingsWindowController: NSWindowController {
         }
         if let window { alert.beginSheetModal(for: window) }
         else { alert.runModal() }
+    }
+}
+
+// MARK: - Live text editing
+
+extension SettingsWindowController: NSTextFieldDelegate {
+    func controlTextDidChange(_ obj: Notification) {
+        if (obj.object as AnyObject) === refreshField {
+            // Update the working copy live; don't rewrite the field text mid-type.
+            if let value = Double(refreshField.stringValue) {
+                config.refreshSeconds = max(1, value)
+                refreshStepper.doubleValue = config.refreshSeconds
+            }
+            updateDirtyState()
+        } else {
+            liveSyncSelectedServer()
+        }
     }
 }
 
