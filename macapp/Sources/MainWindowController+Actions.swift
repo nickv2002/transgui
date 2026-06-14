@@ -39,7 +39,7 @@ extension MainWindowController: NSToolbarDelegate {
         // The live-filter search box.
         if itemIdentifier == ToolbarID.search {
             let item = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
-            item.searchField.placeholderString = "Filter by name"
+            item.searchField.placeholderString = searchPlaceholder
             item.searchField.sendsWholeSearchString = false
             item.searchField.sendsSearchStringImmediately = true
             item.searchField.target = self

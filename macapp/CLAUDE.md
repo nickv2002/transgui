@@ -61,6 +61,30 @@ Up/Down). Follow-up after the plan: the Folders group sorts by its **displayed
 label** (the disambiguating suffix) via `localizedStandardCompare`, not the full
 download path.
 
+Round-3 (`06-multi-server-and-polish.md`) done and verified live: **search
+placeholder** reflects the active match mode ("Fuzzy/Exact filter by name");
+**color-tinted sidebar status icons** (`StatusFilter.color`, `Node.tint`,
+`FilterCellView` tint param — consistent with `progressColor`); **adaptive
+region-aware Added date** (`Formatters.compactDate` numeric-short when the column
+is narrow, full `date` + time when wide; the flip is driven by a custom
+`AddedDateCellView` that re-picks its form in `layout()` against a measured ~162pt
+threshold — so it adapts **live mid-drag** as the column resizes, with no resize
+notification needed; `cellText` keeps the full form so Auto-Size fits it);
+**multi-server** — `config.jsonc` moved outright to a
+`servers: [ServerConfig]` array shape (no backward-compat decode; falls back to a
+single localhost default), `TransmissionClient.init(server:)`, a **Server menu**
+(right of Edit) that checkmarks the active server and switches the live connection,
+selection persisted in `UserDefaults` `SelectedServerName` (resolved
+UserDefaults → `currentServer` → first), window title shows the active server when
+>1 configured; and a **bottom-left fetch spinner + idle dot**
+(`RefreshController.onFetchingChanged`, transition-coalesced; `circle.fill` dot
+tinted by connection state when idle, `NSProgressIndicator` while polling — note the
+spinner is near-invisible against a fast LAN server whose fetch is ~2ms). The owner's
+real config was migrated by hand to the new shape (backed up first); a second
+example `Local` entry was added so the Server menu has two to switch between.
+Follow-up fix this round: the app menu gained standard **Hide / Hide Others /
+Show All** items so **⌘H** is bound (it was a no-op before).
+
 Intentionally dropped: **label filtering and the Labels column/sidebar group.**
 
 - **Remove**'s data-deleting path and the per-file wanted/priority **writes** were
@@ -72,7 +96,8 @@ Intentionally dropped: **label filtering and the Labels column/sidebar group.**
   `02-feature-backlog.md`, `03-feature-ranking.md` (ranked backlog), `04-native-followups.md`
   (icon recolor, Ratio-Limit column, folder-filter fix, connecting state),
   `05-native-followups-2.md` (Dock icon, completed-ETA, folder dupes, sidebar scroll +
-  reordering).
+  reordering), `06-multi-server-and-polish.md` (search placeholder, tinted sidebar
+  icons, adaptive Added date, multi-server + Server menu, fetch spinner/idle dot).
 
 ## Layout (`macapp/Sources/`)
 

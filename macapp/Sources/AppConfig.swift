@@ -1,30 +1,86 @@
 import Foundation
 
-/// User-editable connection config. Loaded from a JSONC file under
-/// `~/.config/transmission-remote-mac/config.jsonc`.
-struct AppConfig: Codable, Sendable, Equatable {
+/// One named Transmission server connection. Holds exactly the per-connection
+/// fields `TransmissionClient` needs.
+struct ServerConfig: Codable, Sendable, Equatable {
+    var name: String
     var host: String
     var port: Int
     var useHTTPS: Bool
     var rpcPath: String
     var username: String?
     var password: String?
-    var refreshSeconds: Double
 
     enum CodingKeys: String, CodingKey {
-        case host, port, useHTTPS, rpcPath, username, password, refreshSeconds
+        case name, host, port, useHTTPS, rpcPath, username, password
+    }
+
+    init(name: String, host: String, port: Int, useHTTPS: Bool, rpcPath: String,
+         username: String? = nil, password: String? = nil) {
+        self.name = name
+        self.host = host
+        self.port = port
+        self.useHTTPS = useHTTPS
+        self.rpcPath = rpcPath
+        self.username = username
+        self.password = password
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         host = try c.decodeIfPresent(String.self, forKey: .host) ?? "localhost"
         port = try c.decodeIfPresent(Int.self, forKey: .port) ?? 9091
+        // Default the display name to "host:port" if none was given.
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? "\(host):\(port)"
         useHTTPS = try c.decodeIfPresent(Bool.self, forKey: .useHTTPS) ?? false
         rpcPath = try c.decodeIfPresent(String.self, forKey: .rpcPath) ?? "/transmission/rpc"
         username = try c.decodeIfPresent(String.self, forKey: .username)
         password = try c.decodeIfPresent(String.self, forKey: .password)
+    }
+
+    /// The built-in default used when the config has no servers.
+    static let localhost = ServerConfig(
+        name: "localhost", host: "localhost", port: 9091,
+        useHTTPS: false, rpcPath: "/transmission/rpc")
+}
+
+/// User-editable app config. Loaded from a JSONC file under
+/// `~/.config/transmission-remote-mac/config.jsonc`. Holds the list of named
+/// servers, the active one, and the poll interval.
+struct AppConfig: Codable, Sendable, Equatable {
+    var servers: [ServerConfig]
+    var refreshSeconds: Double
+    /// Name of the server selected in the config file (the menu/UserDefaults
+    /// selection takes precedence at runtime).
+    var currentServer: String?
+
+    enum CodingKeys: String, CodingKey {
+        case servers, refreshSeconds, currentServer
+    }
+
+    init(servers: [ServerConfig], refreshSeconds: Double, currentServer: String? = nil) {
+        self.servers = servers.isEmpty ? [.localhost] : servers
+        self.refreshSeconds = max(1, refreshSeconds)
+        self.currentServer = currentServer
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let decoded = try c.decodeIfPresent([ServerConfig].self, forKey: .servers) ?? []
+        // Fall back to a single localhost default so the app still launches when
+        // `servers` is empty or missing.
+        servers = decoded.isEmpty ? [.localhost] : decoded
         let refresh = try c.decodeIfPresent(Double.self, forKey: .refreshSeconds) ?? 4
         refreshSeconds = max(1, refresh)
+        currentServer = try c.decodeIfPresent(String.self, forKey: .currentServer)
+    }
+
+    /// The display names of all configured servers, in file order.
+    var serverNames: [String] { servers.map(\.name) }
+
+    /// The server with the given name, if any.
+    func server(named name: String) -> ServerConfig? {
+        servers.first { $0.name == name }
     }
 }
 
@@ -97,22 +153,43 @@ enum ConfigLoader {
     // Transmission Remote — connection config.
     // Edit this file, then choose "Reload Config" from the app menu.
     {
-        // Hostname or IP of the machine running the Transmission daemon.
-        "host": "localhost",
+        // One or more Transmission servers. Pick the active one from the
+        // "Server" menu in the app (the choice persists across launches).
+        "servers": [
+            {
+                // Display name shown in the Server menu.
+                "name": "Local",
 
-        // RPC port (Transmission default is 9091).
-        "port": 9091,
+                // Hostname or IP of the machine running the Transmission daemon.
+                "host": "localhost",
 
-        // Use HTTPS instead of plain HTTP.
-        "useHTTPS": false,
+                // RPC port (Transmission default is 9091).
+                "port": 9091,
 
-        // RPC path. Leave as-is unless your server uses a custom path.
-        "rpcPath": "/transmission/rpc",
+                // Use HTTPS instead of plain HTTP.
+                "useHTTPS": false,
 
-        // Credentials. Leave username empty if the daemon has no auth.
-        // NOTE: stored in plaintext for now; a future version will use the Keychain.
-        "username": "",
-        "password": "",
+                // RPC path. Leave as-is unless your server uses a custom path.
+                "rpcPath": "/transmission/rpc",
+
+                // Credentials. Leave username empty if the daemon has no auth.
+                // NOTE: stored in plaintext for now; a future version will use the Keychain.
+                "username": "",
+                "password": ""
+            },
+            {
+                "name": "Remote",
+                "host": "192.168.1.10",
+                "port": 9091,
+                "useHTTPS": false,
+                "rpcPath": "/transmission/rpc",
+                "username": "",
+                "password": ""
+            }
+        ],
+
+        // Which server to connect to by name on first launch.
+        "currentServer": "Local",
 
         // How often to poll the server for torrent updates, in seconds.
         "refreshSeconds": 4

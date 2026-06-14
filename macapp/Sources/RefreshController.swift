@@ -15,9 +15,23 @@ final class RefreshController {
     var onTorrents: (([Torrent]) -> Void)?
     /// Called whenever the connection state changes (connecting/connected/failed).
     var onState: ((State) -> Void)?
+    /// Called when a poll starts/finishes (true = a fetch is in flight). Fires only
+    /// on transitions so rapid polls don't thrash the UI.
+    var onFetchingChanged: ((Bool) -> Void)?
 
     private var config: AppConfig
     private var client: TransmissionClient?
+
+    /// The active server's name, resolved from UserDefaults → config → first server.
+    private var selectedServerName: String
+
+    /// UserDefaults key persisting the user's server selection across launches.
+    private static let selectedServerKey = "SelectedServerName"
+
+    /// Whether a poll is currently in flight (drives the bottom-left spinner).
+    private var isFetching = false {
+        didSet { if oldValue != isFetching { onFetchingChanged?(isFetching) } }
+    }
 
     /// The live client, if connected — used by one-shot actions (start/stop/etc.).
     var activeClient: TransmissionClient? { client }
@@ -40,11 +54,50 @@ final class RefreshController {
 
     init(config: AppConfig) {
         self.config = config
+        self.selectedServerName = Self.resolveSelectedName(config: config)
     }
 
-    /// Swap in a new config (after "Reload Config") and restart the loop.
+    /// Resolve which server to connect to: persisted UserDefaults selection (if it
+    /// still exists) → `config.currentServer` → the first server.
+    private static func resolveSelectedName(config: AppConfig) -> String {
+        if let saved = UserDefaults.standard.string(forKey: selectedServerKey),
+           config.server(named: saved) != nil {
+            return saved
+        }
+        if let current = config.currentServer, config.server(named: current) != nil {
+            return current
+        }
+        return config.servers.first?.name ?? ServerConfig.localhost.name
+    }
+
+    /// The active server, resolved from `selectedServerName` (falling back to the
+    /// first server if the name somehow no longer matches).
+    private var activeServer: ServerConfig {
+        config.server(named: selectedServerName)
+            ?? config.servers.first ?? .localhost
+    }
+
+    /// The active server's display name.
+    var currentServerName: String { selectedServerName }
+
+    /// All configured server names, for the Server menu.
+    var availableServerNames: [String] { config.serverNames }
+
+    /// Switch to a different server by name: persist the choice and restart.
+    func selectServer(named name: String) {
+        guard config.server(named: name) != nil, name != selectedServerName else { return }
+        selectedServerName = name
+        UserDefaults.standard.set(name, forKey: Self.selectedServerKey)
+        restart()
+    }
+
+    /// Swap in a new config (after "Reload Config") and restart the loop. If the
+    /// previously selected server no longer exists, fall back to the resolved default.
     func updateConfig(_ config: AppConfig) {
         self.config = config
+        if config.server(named: selectedServerName) == nil {
+            selectedServerName = Self.resolveSelectedName(config: config)
+        }
         restart()
     }
 
@@ -74,7 +127,7 @@ final class RefreshController {
         stop()
         state = .connecting
         do {
-            let client = try TransmissionClient(config: config)
+            let client = try TransmissionClient(server: activeServer)
             self.client = client
             loopTask = Task { [weak self] in
                 await self?.runLoop(client: client)
@@ -86,6 +139,7 @@ final class RefreshController {
 
     private func runLoop(client: TransmissionClient) async {
         // Initial session handshake to confirm connectivity / surface auth errors.
+        isFetching = true
         do {
             let info = try await client.fetchSession()
             defaultDownloadDir = info.downloadDir
@@ -98,6 +152,7 @@ final class RefreshController {
                 ? .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
                 : .connecting
         }
+        isFetching = false
 
         while !Task.isCancelled {
             if !paused {
@@ -109,6 +164,8 @@ final class RefreshController {
     }
 
     private func poll(client: TransmissionClient) async {
+        isFetching = true
+        defer { isFetching = false }
         do {
             let torrents = try await client.fetchTorrents()
             // A successful poll also confirms we're connected.

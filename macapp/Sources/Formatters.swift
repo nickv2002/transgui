@@ -46,6 +46,24 @@ enum Formatters {
         }
     }
 
+    /// Compact, region-aware numeric date (e.g. `6/13/26`). Used for the Added
+    /// column when it's narrow.
+    static func compactDate(_ epoch: Double) -> String {
+        guard epoch > 0 else { return "—" }
+        let d = Date(timeIntervalSince1970: epoch)
+        return DateFormatter.localizedString(from: d, dateStyle: .short, timeStyle: .none)
+    }
+
+    /// Compact numeric date *with* time (e.g. `6/13/26, 3:45 PM`), region-aware.
+    /// The middle Added-column form between `compactDate` and the full `date`.
+    static func compactDateTime(_ epoch: Double) -> String {
+        guard epoch > 0 else { return "—" }
+        let d = Date(timeIntervalSince1970: epoch)
+        return DateFormatter.localizedString(from: d, dateStyle: .short, timeStyle: .short)
+    }
+
+    /// Full date + time (e.g. `Jun 13, 2026, 3:45 PM`). The default Added-column
+    /// rendering, shown when the column is wide enough.
     static func date(_ epoch: Double) -> String {
         guard epoch > 0 else { return "—" }
         let d = Date(timeIntervalSince1970: epoch)

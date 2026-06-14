@@ -37,19 +37,19 @@ actor TransmissionClient {
 
     private static let sessionIdHeader = "X-Transmission-Session-Id"
 
-    init(config: AppConfig) throws {
+    init(server: ServerConfig) throws {
         var components = URLComponents()
-        components.scheme = config.useHTTPS ? "https" : "http"
-        components.host = config.host
-        components.port = config.port
-        components.path = config.rpcPath
+        components.scheme = server.useHTTPS ? "https" : "http"
+        components.host = server.host
+        components.port = server.port
+        components.path = server.rpcPath
         guard let url = components.url else {
             throw TransmissionError.invalidURL
         }
         self.endpoint = url
 
-        if let user = config.username, !user.isEmpty {
-            let raw = "\(user):\(config.password ?? "")"
+        if let user = server.username, !user.isEmpty {
+            let raw = "\(user):\(server.password ?? "")"
             let encoded = Data(raw.utf8).base64EncodedString()
             self.authHeader = "Basic \(encoded)"
         } else {

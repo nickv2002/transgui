@@ -3,6 +3,8 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowController: MainWindowController?
+    /// The Server menu's submenu, rebuilt on demand from the configured servers.
+    private let serverMenu = NSMenu(title: "Server")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -21,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = MainWindowController(config: config)
         windowController = controller
         controller.showWindow(nil)
+        rebuildServerMenu()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -43,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let config = try ConfigLoader.load()
             windowController?.applyConfig(config)
+            rebuildServerMenu()
         } catch {
             let alert = NSAlert()
             alert.alertStyle = .warning
@@ -83,6 +87,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(withTitle: "About \(appName)",
                         action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
+        // Standard Hide / Hide Others / Show All (⌘H, ⌥⌘H). Without these explicit
+        // items the key equivalents are unbound and ⌘H does nothing.
+        appMenu.addItem(withTitle: "Hide \(appName)",
+                        action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        let hideOthers = appMenu.addItem(withTitle: "Hide Others",
+                        action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(withTitle: "Show All",
+                        action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit \(appName)",
                         action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
@@ -119,6 +133,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         find.target = self
         editMenuItem.submenu = editMenu
 
+        // Server menu — lists the configured servers; the active one is checked.
+        let serverMenuItem = NSMenuItem()
+        mainMenu.addItem(serverMenuItem)
+        serverMenu.delegate = self
+        serverMenu.autoenablesItems = false
+        serverMenuItem.submenu = serverMenu
+
         NSApp.mainMenu = mainMenu
+    }
+
+    /// Rebuild the Server submenu from the controller's configured servers, with a
+    /// checkmark on the active one.
+    private func rebuildServerMenu() {
+        serverMenu.removeAllItems()
+        guard let controller = windowController else { return }
+        let active = controller.refresh.currentServerName
+        for name in controller.refresh.availableServerNames {
+            let item = serverMenu.addItem(withTitle: name,
+                                          action: #selector(selectServer(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = name
+            item.state = (name == active) ? .on : .off
+        }
+    }
+
+    @objc private func selectServer(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        windowController?.selectServer(name)
+        rebuildServerMenu()
+    }
+}
+
+// MARK: - Server menu refresh
+
+extension AppDelegate: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === serverMenu { rebuildServerMenu() }
     }
 }

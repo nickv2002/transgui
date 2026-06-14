@@ -9,6 +9,11 @@ final class MainWindowController: NSWindowController {
     private let detailLabel = NSTextField(wrappingLabelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
 
+    /// Bottom-left fetch indicator: an animated spinner while a poll is in flight,
+    /// a static dot (tinted by connection state) when idle.
+    private let fetchSpinner = NSProgressIndicator()
+    private let idleDot = NSImageView()
+
     /// Speed sparkline in the Info tab, and the rolling history that feeds it.
     private let speedGraph = SpeedGraphView()
     private var speedHistoryId: Int?
@@ -34,6 +39,17 @@ final class MainWindowController: NSWindowController {
     /// Full sorted model — every torrent from the server.
     var torrents: [Torrent] = []
 
+    /// Width thresholds (pt) for the Added column's three date forms, measured once
+    /// from representative strings so each form appears right as it starts to fit:
+    /// below `mid` → numeric date; `mid`..<`full` → numeric date+time; ≥`full` →
+    /// full date+time.
+    private lazy var addedWidthThresholds: (mid: CGFloat, full: CGFloat) = {
+        let epoch = Date(timeIntervalSince1970: 1_700_000_000).timeIntervalSince1970
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize)]
+        func width(_ s: String) -> CGFloat { (s as NSString).size(withAttributes: attrs).width + 16 }
+        return (mid: width(Formatters.compactDateTime(epoch)), full: width(Formatters.date(epoch)))
+    }()
+
     /// What the table actually renders: `torrents` after applying `filterText`.
     /// Keeping this derived list lets the search filter the view without touching
     /// the model, the refresh loop, or the sort.
@@ -56,7 +72,21 @@ final class MainWindowController: NSWindowController {
         restoreSelection(ids)
         updateDetail()
         updateStatusBar(state: refresh.state)
+        updateSearchPlaceholder()
         window?.toolbar?.validateVisibleItems()
+    }
+
+    /// Reflect the active match mode in the search field's placeholder text.
+    func updateSearchPlaceholder() {
+        searchField?.placeholderString = searchMode == .fuzzy
+            ? "Fuzzy filter by name"
+            : "Exact filter by name"
+    }
+
+    /// The placeholder string for the current search mode (used when the search
+    /// toolbar item is first created).
+    var searchPlaceholder: String {
+        searchMode == .fuzzy ? "Fuzzy filter by name" : "Exact filter by name"
     }
 
     /// The toolbar's search field, retained so ⌘F can focus it.
@@ -136,6 +166,7 @@ final class MainWindowController: NSWindowController {
         buildLayout()
         wireRefresh()
         observeWindow()
+        updateWindowTitle()
     }
 
     @available(*, unavailable)
@@ -152,6 +183,29 @@ final class MainWindowController: NSWindowController {
     /// Apply a freshly reloaded config without rebuilding the window.
     func applyConfig(_ config: AppConfig) {
         refresh.updateConfig(config)
+        updateWindowTitle()
+    }
+
+    /// Switch to a different server (from the Server menu). Clears the list to a
+    /// "Connecting…" state; the existing connecting flow repaints once connected.
+    func selectServer(_ name: String) {
+        guard name != refresh.currentServerName else { return }
+        refresh.selectServer(named: name)
+        torrents = []
+        rebuildDisplayed()
+        tableView.reloadData()
+        updateDetail()
+        updateStatusBar(state: refresh.state)
+        updateWindowTitle()
+    }
+
+    /// Reflect the active server in the window title when more than one is configured.
+    func updateWindowTitle() {
+        if refresh.availableServerNames.count > 1 {
+            window?.title = "Transmission Remote — \(refresh.currentServerName)"
+        } else {
+            window?.title = "Transmission Remote"
+        }
     }
 
     // MARK: - Layout
@@ -241,11 +295,31 @@ final class MainWindowController: NSWindowController {
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.stringValue = "Connecting…"
+
+        // Fetch indicator (spinner) + idle dot, occupying the same far-left slot.
+        fetchSpinner.style = .spinning
+        fetchSpinner.controlSize = .small
+        fetchSpinner.isDisplayedWhenStopped = false
+        fetchSpinner.translatesAutoresizingMaskIntoConstraints = false
+        idleDot.image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: "Idle")
+        idleDot.contentTintColor = .systemGray
+        idleDot.symbolConfiguration = .init(pointSize: 8, weight: .regular)
+        idleDot.translatesAutoresizingMaskIntoConstraints = false
+
         let statusBar = NSView()
+        statusBar.addSubview(fetchSpinner)
+        statusBar.addSubview(idleDot)
         statusBar.addSubview(statusLabel)
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            statusLabel.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor, constant: 10),
+            fetchSpinner.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor, constant: 10),
+            fetchSpinner.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
+            fetchSpinner.widthAnchor.constraint(equalToConstant: 12),
+            fetchSpinner.heightAnchor.constraint(equalToConstant: 12),
+            idleDot.centerXAnchor.constraint(equalTo: fetchSpinner.centerXAnchor),
+            idleDot.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
+            idleDot.widthAnchor.constraint(equalToConstant: 12),
+            statusLabel.leadingAnchor.constraint(equalTo: fetchSpinner.trailingAnchor, constant: 8),
             statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusBar.trailingAnchor, constant: -10),
             statusLabel.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
         ])
@@ -368,6 +442,25 @@ final class MainWindowController: NSWindowController {
         refresh.onState = { [weak self] state in
             self?.updateStatusBar(state: state)
         }
+        refresh.onFetchingChanged = { [weak self] fetching in
+            guard let self else { return }
+            if fetching {
+                self.idleDot.isHidden = true
+                self.fetchSpinner.startAnimation(nil)
+            } else {
+                self.fetchSpinner.stopAnimation(nil)
+                self.idleDot.isHidden = false
+            }
+        }
+    }
+
+    /// Dot color reflecting the connection state (a free connection cue when idle).
+    private func connectionDotColor(for state: RefreshController.State) -> NSColor {
+        switch state {
+        case .connected: return .systemGreen
+        case .failed: return .systemRed
+        case .idle, .connecting: return .systemGray
+        }
     }
 
     private func applyTorrents(_ incoming: [Torrent]) {
@@ -449,6 +542,7 @@ final class MainWindowController: NSWindowController {
     }
 
     private func updateStatusBar(state: RefreshController.State) {
+        idleDot.contentTintColor = connectionDotColor(for: state)
         let connection: String
         switch state {
         case .idle: connection = "Connecting…"
@@ -711,6 +805,21 @@ extension MainWindowController: NSTableViewDataSource, NSTableViewDelegate {
             return cell
         }
 
+        // Added: a self-adapting cell that re-picks compact vs full date in its own
+        // `layout()` — so it flips live as the column is dragged wider/narrower.
+        if column == .added {
+            let cell = (tableView.makeView(withIdentifier: AddedDateCellView.reuseIdentifier, owner: self) as? AddedDateCellView)
+                ?? {
+                    let c = AddedDateCellView()
+                    c.identifier = AddedDateCellView.reuseIdentifier
+                    return c
+                }()
+            cell.configure(epoch: t.addedDate,
+                           midThreshold: addedWidthThresholds.mid,
+                           fullThreshold: addedWidthThresholds.full)
+            return cell
+        }
+
         let identifier = NSUserInterfaceItemIdentifier("TextCell")
         let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView) ?? {
             let c = NSTableCellView()
@@ -733,5 +842,66 @@ extension MainWindowController: NSTableViewDataSource, NSTableViewDelegate {
         cell.textField?.stringValue = cellText(for: column, torrent: t)
         cell.textField?.alignment = rightAligned.contains(column) ? .right : .left
         return cell
+    }
+}
+
+/// Cell for the Added column that adapts the date detail to the column width in
+/// three steps: numeric date when narrow, numeric date+time at a middle width, and
+/// the full date+time when wide. It decides in `layout()` — called on every frame
+/// change, including continuously while the column is dragged — so the form flips
+/// live without any resize notification.
+final class AddedDateCellView: NSTableCellView {
+    static let reuseIdentifier = NSUserInterfaceItemIdentifier("AddedDateCell")
+
+    /// The three increasingly detailed date forms, in ascending width order.
+    private enum Form { case date, dateTime, full }
+
+    private let label = NSTextField(labelWithString: "")
+    private var epoch: Double = 0
+    private var midThreshold: CGFloat = 0
+    private var fullThreshold: CGFloat = .greatestFiniteMagnitude
+    /// Tracks the last form rendered so `layout()` only rewrites text on a change.
+    private var currentForm: Form?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.lineBreakMode = .byTruncatingTail
+        label.font = .systemFont(ofSize: NSFont.systemFontSize)
+        addSubview(label)
+        textField = label
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func configure(epoch: Double, midThreshold: CGFloat, fullThreshold: CGFloat) {
+        self.epoch = epoch
+        self.midThreshold = midThreshold
+        self.fullThreshold = fullThreshold
+        currentForm = nil          // force a re-render for the (reused) cell
+        applyText()
+    }
+
+    override func layout() {
+        super.layout()
+        applyText()
+    }
+
+    private func applyText() {
+        let w = bounds.width
+        let form: Form = w >= fullThreshold ? .full : (w >= midThreshold ? .dateTime : .date)
+        guard currentForm != form else { return }
+        currentForm = form
+        switch form {
+        case .date: label.stringValue = Formatters.compactDate(epoch)
+        case .dateTime: label.stringValue = Formatters.compactDateTime(epoch)
+        case .full: label.stringValue = Formatters.date(epoch)
+        }
     }
 }

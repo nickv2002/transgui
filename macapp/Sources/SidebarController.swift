@@ -19,15 +19,19 @@ final class SidebarController: NSObject {
         let filter: SidebarFilter?
         /// Set only on top-level group headers; identifies the reorderable section.
         let group: SidebarGroup?
+        /// Icon tint; set only on status rows. nil rows use the neutral default.
+        let tint: NSColor?
         var count: Int
         var children: [Node]
 
         init(title: String, symbol: String? = nil, filter: SidebarFilter? = nil,
-             group: SidebarGroup? = nil, count: Int = 0, children: [Node] = []) {
+             group: SidebarGroup? = nil, tint: NSColor? = nil,
+             count: Int = 0, children: [Node] = []) {
             self.title = title
             self.symbol = symbol
             self.filter = filter
             self.group = group
+            self.tint = tint
             self.count = count
             self.children = children
         }
@@ -130,7 +134,7 @@ final class SidebarController: NSObject {
         let statusNode = Node(title: "Status", group: .status)
         statusNode.children = StatusFilter.allCases.map { sf in
             Node(title: sf.displayName, symbol: sf.symbol, filter: .status(sf),
-                 count: torrents.lazy.filter(sf.matches).count)
+                 tint: sf.color, count: torrents.lazy.filter(sf.matches).count)
         }
 
         // Trackers group: distinct hosts, sorted, with counts.
@@ -416,7 +420,7 @@ extension SidebarController: NSOutlineViewDelegate {
         let id = NSUserInterfaceItemIdentifier("FilterCell")
         let cell = (outlineView.makeView(withIdentifier: id, owner: self) as? FilterCellView)
             ?? FilterCellView(identifier: id)
-        cell.configure(symbol: node.symbol, title: node.title, count: node.count)
+        cell.configure(symbol: node.symbol, title: node.title, count: node.count, tint: node.tint)
         // For folders show the full path on hover; the visible label is only the
         // minimal disambiguating suffix.
         if case .folder(let dir) = node.filter {
@@ -473,8 +477,9 @@ private final class FilterCellView: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func configure(symbol: String?, title titleText: String, count: Int) {
+    func configure(symbol: String?, title titleText: String, count: Int, tint: NSColor? = nil) {
         if let symbol { icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
+        icon.contentTintColor = tint ?? .secondaryLabelColor
         title.stringValue = titleText
         badge.stringValue = count > 0 ? "\(count)" : ""
     }

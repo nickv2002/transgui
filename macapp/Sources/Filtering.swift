@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// Status filter rows in the sidebar, mirroring the legacy app's `frow*` set
 /// (`filtering.pas`) with native names.
@@ -29,6 +29,21 @@ enum StatusFilter: String, CaseIterable, Sendable {
         case .stopped: return "stop.circle"
         case .error: return "exclamationmark.triangle"
         case .waiting: return "clock"
+        }
+    }
+
+    /// State color for the sidebar row icon, kept consistent with
+    /// `progressColor(for:)` in `MainWindowController`.
+    var color: NSColor {
+        switch self {
+        case .all: return .secondaryLabelColor
+        case .downloading: return .controlAccentColor
+        case .completed: return .systemGreen
+        case .active: return .systemGreen
+        case .waiting: return .systemOrange
+        case .error: return .systemRed
+        case .stopped: return .systemGray
+        case .inactive: return .systemGray
         }
     }
 
