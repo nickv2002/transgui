@@ -109,6 +109,7 @@ Intentionally dropped: **label filtering and the Labels column/sidebar group.**
 - `SettingsWindowController.swift` — native preferences window (Servers / General).
 - `SettingsEditor.swift` — Foundation-only editing model behind Settings (tested).
 - `ConnectionDiagnostics.swift` — Test Connection error→message mapping (tested).
+- `HostCandidates.swift` — comma-separated host parsing + `ConnectionResolver` (tested).
 - `MainWindowController.swift` — window, `NSTableView`, detail pane, status bar,
   sorting, search/filter (`displayed` is the filtered view of the `torrents` model).
 - `MainWindowController+Actions.swift` — toolbar (incl. Add pull-down), context
@@ -193,6 +194,27 @@ connect over HTTP; the **Tailscale** host
 so it needs **Use HTTPS** checked (plain HTTP there returns "Client sent an HTTP
 request to an HTTPS server").
 
+### Multi-host failover
+
+One server can list **several hosts** for the same daemon — type a comma-separated
+list in the Host field, e.g.
+`10.0.1.2, n5.local, https://transmission.raptor-ruffe.ts.net`. On connect (and
+after any failed poll) the app probes the candidates **in order** and uses the
+first that responds, so leaving/joining the tailnet fails over transparently.
+
+- `ServerConfig.connectionCandidates` (`HostCandidates.swift`) splits the Host
+  field on commas and parses each token as a connection string: bare host,
+  `host:port`, or `scheme://host[:port][/path]` (incl. bracketed IPv6). Parts a
+  token omits are inherited from the server (useHTTPS, port, rpcPath, credentials).
+  A single host yields one candidate — existing configs are unchanged.
+- `ConnectionResolver.firstReachable(_:probe:)` is the pure, injectable selection
+  core (unit-tested). `RefreshController.resolveReachableClient()` uses it with a
+  real `session-get` probe and a short per-candidate timeout (`probeTimeout`, 5s),
+  re-resolving whenever a poll fails. `TransmissionClient.init(server:timeout:)`
+  takes the probe timeout.
+- Test Connection probes every candidate and reports which one responded (or that
+  none did).
+
 ## Tests
 
 XCTest unit tests live in `macapp/Tests/`, built by the `TransmissionRemoteTests`
@@ -201,14 +223,16 @@ launch the real app and connect to the owner's server), the **business-logic
 source files are compiled directly into the test bundle**, so tests run standalone
 via `xctest` with no `TEST_HOST`.
 
-Coverage (81 hermetic tests): `FuzzyMatch` (subsequence + ranking), `Formatters`
+Coverage (102 hermetic tests): `FuzzyMatch` (subsequence + ranking), `Formatters`
 (size/speed/percent/ratio/eta/dates), `Filtering` (every `StatusFilter` predicate,
 tints, `SidebarFilter`), `Models` (status/eta-display/normalizeDownloadDir/
 trackerHost/seed-ratio + RPC `torrent-get`/files decoding), `AppConfig` /
 `PreferencesStore` (decode defaults, round-trip, migration, default seeding,
 native-store precedence), `ConnectionDiagnostics` (every `TransmissionError` maps
-to a field-targeted message), and **`SettingsEditor`** (add/remove/edit/default/
-refresh, name trim+dedupe, default-follows-rename, dirty detection, save, reset).
+to a field-targeted message), **`SettingsEditor`** (add/remove/edit/default/
+refresh, name trim+dedupe, default-follows-rename, dirty detection, save, reset),
+and **`HostCandidates`/`ConnectionResolver`** (comma-list parsing incl.
+scheme/port/path/IPv6/inheritance + first-reachable failover selection).
 A `TorrentFactory` helper builds `Torrent` values from a default JSON dict.
 
 ```sh
@@ -219,8 +243,8 @@ xcodebuild -project TransmissionRemote.xcodeproj -scheme TransmissionRemote \
 
 **Live connection tests** (`LiveConnectionTests`) hit the real daemon and are
 **skipped by default**. They read credentials from the legacy JSONC at runtime
-(never hard-coded) and cover IP/`.local`/Tailscale-HTTPS plus failures (unknown
-host, wrong password). Note: a host-less test bundle's ATS is governed by the
+(never hard-coded) and cover IP/`.local`/Tailscale-HTTPS, multi-host failover
+resolution, plus failures (unknown host, wrong password). Note: a host-less test bundle's ATS is governed by the
 `xctest` runner (not the bundle's `Info.plist`), so the cleartext-HTTP cases
 `XCTSkip` in the runner — those are verified through the app + `curl` instead.
 Forward the opt-in env var with the `TEST_RUNNER_` prefix:
