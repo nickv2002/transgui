@@ -83,6 +83,23 @@ final class LiveConnectionTests: XCTestCase {
         XCTAssertFalse(info.version.isEmpty)
     }
 
+    // MARK: - Failover (multi-host)
+
+    func testFailoverResolvesToAReachableHost() async throws {
+        try requireLive()
+        let c = try credentials()
+        // The owner's real multi-host scenario. In the test runner ATS blocks the
+        // plain-HTTP candidates, so this resolves to the Tailscale HTTPS host; in
+        // the app (ATS exception) it would pick the first reachable LAN host.
+        let server = make("10.0.1.2, n5.local, https://transmission.raptor-ruffe.ts.net",
+                          user: c.user, pass: c.pass)
+        let chosen = await ConnectionResolver.firstReachable(server.connectionCandidates) { candidate in
+            guard let client = try? TransmissionClient(server: candidate, timeout: 5) else { return false }
+            return (try? await client.fetchSession()) != nil
+        }
+        XCTAssertNotNil(chosen, "expected at least one of the candidates to respond")
+    }
+
     // MARK: - Failures (over HTTPS so ATS doesn't interfere)
 
     func testUnknownHostFails() async throws {

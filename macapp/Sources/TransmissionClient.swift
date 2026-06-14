@@ -37,7 +37,7 @@ actor TransmissionClient {
 
     private static let sessionIdHeader = "X-Transmission-Session-Id"
 
-    init(server: ServerConfig) throws {
+    init(server: ServerConfig, timeout: TimeInterval = 15) throws {
         var components = URLComponents()
         components.scheme = server.useHTTPS ? "https" : "http"
         components.host = server.host
@@ -57,7 +57,7 @@ actor TransmissionClient {
         }
 
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForRequest = timeout
         self.session = URLSession(configuration: configuration)
     }
 

@@ -216,6 +216,10 @@ final class SettingsWindowController: NSWindowController {
         }
         httpsCheckbox.target = self
         httpsCheckbox.action = #selector(serverFieldChanged)
+        hostField.placeholderString = "host or comma-separated list"
+        hostField.toolTip = "One host, or a comma-separated list of fallbacks tried in "
+            + "order — e.g. 10.0.1.2, n5.local, https://transmission.example.ts.net. "
+            + "Each may include a scheme/port; the app connects to the first that responds."
         portField.placeholderString = "9091"
         rpcPathField.placeholderString = "/transmission/rpc"
         usernameField.placeholderString = "(none)"
@@ -445,8 +449,10 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func testConnection() {
         // Test exactly what's typed in the form right now, even if not yet saved.
-        let server = currentServerFromFields()
-        guard !server.host.isEmpty else {
+        // The host field may list several comma-separated candidates; probe each in
+        // order and report the first that responds (mirrors the app's failover).
+        let candidates = currentServerFromFields().connectionCandidates.filter { !$0.host.isEmpty }
+        guard !candidates.isEmpty else {
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.messageText = "Enter a host to test"
@@ -458,33 +464,47 @@ final class SettingsWindowController: NSWindowController {
         testSpinner.startAnimation(nil)
 
         Task { [weak self] in
-            let result: Result<String, Error>
-            do {
-                let client = try TransmissionClient(server: server)
-                let info = try await client.fetchSession()
-                result = .success(info.version)
-            } catch {
-                result = .failure(error)
+            var reached: (server: ServerConfig, version: String)?
+            var firstError: Error?
+            for candidate in candidates {
+                do {
+                    let client = try TransmissionClient(server: candidate, timeout: 5)
+                    let info = try await client.fetchSession()
+                    reached = (candidate, info.version)
+                    break
+                } catch {
+                    if firstError == nil { firstError = error }
+                }
             }
             guard let self else { return }
             self.testSpinner.stopAnimation(nil)
             self.testButton.isEnabled = self.selectedIndex != nil
-            self.presentTestResult(result, server: server)
+            self.presentTestResult(reached: reached, firstError: firstError,
+                                   candidates: candidates)
         }
     }
 
-    private func presentTestResult(_ result: Result<String, Error>, server: ServerConfig) {
+    private func presentTestResult(reached: (server: ServerConfig, version: String)?,
+                                   firstError: Error?, candidates: [ServerConfig]) {
         let alert = NSAlert()
-        switch result {
-        case .success(let version):
+        if let reached {
             alert.alertStyle = .informational
             alert.messageText = "Connection succeeded"
-            alert.informativeText = "Connected to \(server.host):\(server.port).\n"
-                + "Transmission \(version)."
-        case .failure(let error):
+            var text = "Connected to \(reached.server.host):\(reached.server.port)"
+            text += reached.server.useHTTPS ? " (HTTPS).\n" : ".\n"
+            text += "Transmission \(reached.version)."
+            if candidates.count > 1 {
+                text += "\n\nUsing the first of \(candidates.count) hosts that responded."
+            }
+            alert.informativeText = text
+        } else {
             alert.alertStyle = .warning
             alert.messageText = "Connection failed"
-            alert.informativeText = ConnectionDiagnostics.message(for: error, server: server)
+            let diag = firstError.map { ConnectionDiagnostics.message(for: $0, server: candidates[0]) }
+                ?? "Could not reach the server."
+            alert.informativeText = candidates.count > 1
+                ? "None of the \(candidates.count) hosts responded.\n\n\(diag)"
+                : diag
         }
         if let window { alert.beginSheetModal(for: window) }
         else { alert.runModal() }

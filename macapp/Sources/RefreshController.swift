@@ -117,73 +117,101 @@ final class RefreshController {
         self.paused = paused
     }
 
-    /// Force an immediate refresh (e.g. right after an action).
+    /// Force an immediate refresh (e.g. right after an action). If the poll fails,
+    /// drop the client so the loop re-resolves a reachable host next tick.
     func refreshNow() {
         guard let client else { return }
-        Task { await self.poll(client: client) }
+        Task { if !(await self.poll(client: client)) { self.client = nil } }
     }
+
+    /// The host candidate currently in use (after failover resolution), for status.
+    private(set) var resolvedServer: ServerConfig?
+
+    /// Per-candidate probe timeout. Short so a dead host (e.g. an off-LAN IP)
+    /// fails over quickly; a reachable host answers in well under this.
+    private let probeTimeout: TimeInterval = 5
 
     private func restart() {
         stop()
+        client = nil
+        resolvedServer = nil
         state = .connecting
-        do {
-            let client = try TransmissionClient(server: activeServer)
-            self.client = client
-            loopTask = Task { [weak self] in
-                await self?.runLoop(client: client)
-            }
-        } catch {
-            state = .failed(error.localizedDescription)
+        loopTask = Task { [weak self] in
+            await self?.runLoop()
         }
     }
 
-    private func runLoop(client: TransmissionClient) async {
-        // Initial session handshake to confirm connectivity / surface auth errors.
-        isFetching = true
-        do {
-            let info = try await client.fetchSession()
-            defaultDownloadDir = info.downloadDir
-            hasConnectedOnce = true
-            state = .connected(version: info.version)
-        } catch {
-            // Before the first success, keep retrying as `.connecting`; only show
-            // a failure once we've connected at least once.
-            state = hasConnectedOnce
-                ? .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
-                : .connecting
-        }
-        isFetching = false
-
+    private func runLoop() async {
         while !Task.isCancelled {
-            if !paused {
-                await poll(client: client)
+            if client == nil {
+                await resolveReachableClient()
+            }
+            if let client, !paused {
+                if !(await poll(client: client)) {
+                    // Lost the connection — re-resolve (the network may have
+                    // changed, e.g. left the tailnet) on the next iteration.
+                    self.client = nil
+                }
             }
             let seconds = config.refreshSeconds
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         }
     }
 
-    private func poll(client: TransmissionClient) async {
+    /// Probe the active server's host candidates in order and adopt the first that
+    /// answers a `session-get`. Sets `client`/`resolvedServer`/state on success.
+    private func resolveReachableClient() async {
+        isFetching = true
+        defer { isFetching = false }
+
+        let candidates = activeServer.connectionCandidates
+        var lastError: Error?
+        for candidate in candidates {
+            if Task.isCancelled { return }
+            do {
+                let client = try TransmissionClient(server: candidate, timeout: probeTimeout)
+                let info = try await client.fetchSession()
+                self.client = client
+                self.resolvedServer = candidate
+                defaultDownloadDir = info.downloadDir
+                hasConnectedOnce = true
+                state = .connected(version: info.version)
+                return
+            } catch {
+                lastError = error
+                continue
+            }
+        }
+
+        // No candidate responded. Before the first-ever success, stay `.connecting`
+        // (the loop keeps retrying) so the first paint never flashes an error.
+        let detail = (lastError as? LocalizedError)?.errorDescription
+            ?? lastError?.localizedDescription
+            ?? "Could not reach any configured host."
+        let message = candidates.count > 1
+            ? "Could not reach any of the \(candidates.count) configured hosts. \(detail)"
+            : detail
+        state = hasConnectedOnce ? .failed(message) : .connecting
+    }
+
+    /// Poll torrents (+ free space). Returns false if the request failed, so the
+    /// caller can re-resolve a reachable host.
+    @discardableResult
+    private func poll(client: TransmissionClient) async -> Bool {
         isFetching = true
         defer { isFetching = false }
         do {
             let torrents = try await client.fetchTorrents()
-            // A successful poll also confirms we're connected.
-            if case .connected = state {} else {
-                let info = try? await client.fetchSession()
-                defaultDownloadDir = info?.downloadDir
-                hasConnectedOnce = true
-                state = .connected(version: info?.version ?? "?")
-            }
             if let dir = defaultDownloadDir {
                 freeSpace = try? await client.freeSpace(path: dir)
             }
             onTorrents?(torrents)
+            return true
         } catch {
-            // Same first-connect grace as the initial handshake.
             state = hasConnectedOnce
                 ? .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
                 : .connecting
+            return false
         }
     }
 }
