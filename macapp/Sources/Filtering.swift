@@ -39,10 +39,10 @@ enum StatusFilter: String, CaseIterable, Sendable {
         case .all: return .secondaryLabelColor
         case .downloading: return .controlAccentColor
         case .completed: return .systemGreen
-        case .active: return .systemGreen
+        case .active: return .systemPurple
         case .waiting: return .systemOrange
         case .error: return .systemRed
-        case .stopped: return .systemGray
+        case .stopped: return .systemYellow
         case .inactive: return .systemGray
         }
     }

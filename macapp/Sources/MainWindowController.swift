@@ -158,8 +158,14 @@ final class MainWindowController: NSWindowController {
             defer: false
         )
         window.title = "Transmission Remote"
+        // Restore the saved frame if one exists; otherwise center on first launch.
+        // The frame is also saved explicitly on terminate (see AppDelegate) —
+        // relying on setFrameAutosaveName alone is unreliable under this app's
+        // manual `main.swift` run loop, so changes weren't persisting.
         window.setFrameAutosaveName("MainWindow")
-        window.center()
+        if !window.setFrameUsingName("MainWindow") {
+            window.center()
+        }
         super.init(window: window)
 
         buildToolbar()
@@ -227,6 +233,7 @@ final class MainWindowController: NSWindowController {
         let scroll = NSScrollView()
         scroll.documentView = tableView
         scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
 
         // Detail pane.
@@ -372,7 +379,10 @@ final class MainWindowController: NSWindowController {
         }
         tableView.allowsColumnReordering = true
         tableView.allowsColumnResizing = true
-        tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        // Finder-like: dragging a column wider grows the total content width and
+        // scrolls horizontally rather than shrinking the other columns. Columns
+        // keep their exact widths; leftover window width shows as empty space.
+        tableView.columnAutoresizingStyle = .noColumnAutoresizing
         // Persist column order / width / visibility across launches.
         tableView.autosaveName = "TorrentTable"
         tableView.autosaveTableColumns = true

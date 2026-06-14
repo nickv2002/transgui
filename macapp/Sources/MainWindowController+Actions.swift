@@ -119,7 +119,7 @@ extension MainWindowController: NSToolbarDelegate {
         menu.addItem(withTitle: "Stop", action: #selector(stopSelected(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Force Start", action: #selector(forceStartSelected(_:)), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Verify Local Data", action: #selector(verifySelected(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Verify", action: #selector(verifySelected(_:)), keyEquivalent: "")
 
         // Queue submenu.
         let queueItem = menu.addItem(withTitle: "Queue", action: nil, keyEquivalent: "")

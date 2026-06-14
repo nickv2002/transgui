@@ -30,6 +30,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
+    /// Persist the window frame on quit. AppKit's automatic frame autosave doesn't
+    /// reliably flush under this app's manual `main.swift` run loop, so save it
+    /// explicitly here (paired with `setFrameUsingName` restore on launch).
+    func applicationWillTerminate(_ notification: Notification) {
+        windowController?.window?.saveFrame(usingName: "MainWindow")
+    }
+
     /// Dock drop / "Open With" of `.torrent` files.
     func application(_ application: NSApplication, open urls: [URL]) {
         windowController?.addFiles(urls)
