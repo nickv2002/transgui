@@ -92,28 +92,36 @@ final class SettingsWindowController: NSWindowController {
         generalItem.view = buildGeneralPane()
         tabView.addTabViewItem(generalItem)
 
-        let bar = buildBottomBar()
+        setupBottomButtons()
 
+        // Place Test Connection + Save *inside* the tab view's content box
+        // (bottom-right), since they act on the settings shown in that box — not
+        // in the window chrome below it.
         let container = NSView()
         container.addSubview(tabView)
-        container.addSubview(bar)
+        container.addSubview(testSpinner)
+        container.addSubview(testButton)
+        container.addSubview(saveButton)
         NSLayoutConstraint.activate([
             tabView.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
             tabView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
             tabView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
+            tabView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
 
-            bar.topAnchor.constraint(equalTo: tabView.bottomAnchor, constant: 10),
-            bar.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
-            bar.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
-            bar.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -16),
+            saveButton.trailingAnchor.constraint(equalTo: tabView.trailingAnchor, constant: -18),
+            saveButton.bottomAnchor.constraint(equalTo: tabView.bottomAnchor, constant: -16),
+            saveButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
+
+            testButton.trailingAnchor.constraint(equalTo: saveButton.leadingAnchor, constant: -10),
+            testButton.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
+
+            testSpinner.trailingAnchor.constraint(equalTo: testButton.leadingAnchor, constant: -8),
+            testSpinner.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
         ])
         return container
     }
 
-    private func buildBottomBar() -> NSView {
-        let bar = NSView()
-        bar.translatesAutoresizingMaskIntoConstraints = false
-
+    private func setupBottomButtons() {
         testSpinner.translatesAutoresizingMaskIntoConstraints = false
         testSpinner.style = .spinning
         testSpinner.controlSize = .small
@@ -131,23 +139,6 @@ final class SettingsWindowController: NSWindowController {
         saveButton.keyEquivalent = "\r"   // Return triggers Save.
         saveButton.target = self
         saveButton.action = #selector(save)
-
-        bar.addSubview(testSpinner)
-        bar.addSubview(testButton)
-        bar.addSubview(saveButton)
-        NSLayoutConstraint.activate([
-            bar.heightAnchor.constraint(equalToConstant: 28),
-            saveButton.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
-            saveButton.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            saveButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
-
-            testButton.trailingAnchor.constraint(equalTo: saveButton.leadingAnchor, constant: -10),
-            testButton.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-
-            testSpinner.trailingAnchor.constraint(equalTo: testButton.leadingAnchor, constant: -8),
-            testSpinner.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-        ])
-        return bar
     }
 
     private func buildServersPane() -> NSView {
