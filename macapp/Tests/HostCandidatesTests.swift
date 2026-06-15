@@ -27,6 +27,16 @@ final class HostCandidatesTests: XCTestCase {
         XCTAssertEqual(cands.map(\.host), ["a", "b"])
     }
 
+    func testNewlineSeparatedTokens() {
+        let cands = base("a\nb\r\nc").connectionCandidates
+        XCTAssertEqual(cands.map(\.host), ["a", "b", "c"])
+    }
+
+    func testMixedCommaAndNewlineSeparators() {
+        let cands = base("a,\nb , c\n").connectionCandidates
+        XCTAssertEqual(cands.map(\.host), ["a", "b", "c"])
+    }
+
     func testEmptyHostYieldsSelf() {
         let cands = base("").connectionCandidates
         XCTAssertEqual(cands.count, 1)

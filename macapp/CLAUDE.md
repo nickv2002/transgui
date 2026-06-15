@@ -196,24 +196,33 @@ request to an HTTPS server").
 
 ### Multi-host failover
 
-One server can list **several hosts** for the same daemon — type a comma-separated
-list in the Host field, e.g.
-`10.0.1.2, n5.local, https://transmission.raptor-ruffe.ts.net`. On connect (and
+One server can list **several hosts** for the same daemon — type a comma- **or
+line-separated** list in the Host field, e.g.
+`10.0.1.2, n5.local, https://transmission.raptor-ruffe.ts.net`. The Host field is a
+**2-line wrapping field** so a fallback list stays visible at once. On connect (and
 after any failed poll) the app probes the candidates **in order** and uses the
 first that responds, so leaving/joining the tailnet fails over transparently.
 
 - `ServerConfig.connectionCandidates` (`HostCandidates.swift`) splits the Host
-  field on commas and parses each token as a connection string: bare host,
-  `host:port`, or `scheme://host[:port][/path]` (incl. bracketed IPv6). Parts a
-  token omits are inherited from the server (useHTTPS, port, rpcPath, credentials).
-  A single host yields one candidate — existing configs are unchanged.
+  field on commas **and newlines** (`split(whereSeparator:)` on `","`/`.isNewline`,
+  so `\r\n` is handled as one separator) and parses each token as a connection
+  string: bare host, `host:port`, or `scheme://host[:port][/path]` (incl. bracketed
+  IPv6). Parts a token omits are inherited from the server (useHTTPS, port, rpcPath,
+  credentials). A single host yields one candidate — existing configs are unchanged.
+  `hasMultipleHostCandidates` derives from the parsed count (not a raw `,` test).
 - `ConnectionResolver.firstReachable(_:probe:)` is the pure, injectable selection
   core (unit-tested). `RefreshController.resolveReachableClient()` uses it with a
   real `session-get` probe and a short per-candidate timeout (`probeTimeout`, 5s),
   re-resolving whenever a poll fails. `TransmissionClient.init(server:timeout:)`
   takes the probe timeout.
-- Test Connection probes every candidate and reports which one responded (or that
-  none did).
+- **Test Connection probes EVERY candidate concurrently** (`probeAll`, a `TaskGroup`
+  preserving candidate order) and reports a **per-host ✓/✗ list** — a header
+  ("N of M hosts responded") plus one line per host
+  (`✓ http://host:port — Transmission x` / `✗ … — <short reason>`, via
+  `shortError`). A single-host server keeps the focused success/failure message.
+  Verified live against the owner's N5 server: all three hosts (IP, `.local`,
+  Tailscale-HTTPS) respond, and failover resolves to a reachable host
+  (`LiveConnectionTests`).
 
 ## Tests
 
@@ -223,7 +232,7 @@ launch the real app and connect to the owner's server), the **business-logic
 source files are compiled directly into the test bundle**, so tests run standalone
 via `xctest` with no `TEST_HOST`.
 
-Coverage (102 hermetic tests): `FuzzyMatch` (subsequence + ranking), `Formatters`
+Coverage (104 hermetic tests): `FuzzyMatch` (subsequence + ranking), `Formatters`
 (size/speed/percent/ratio/eta/dates), `Filtering` (every `StatusFilter` predicate,
 tints, `SidebarFilter`), `Models` (status/eta-display/normalizeDownloadDir/
 trackerHost/seed-ratio + RPC `torrent-get`/files decoding), `AppConfig` /
@@ -231,8 +240,8 @@ trackerHost/seed-ratio + RPC `torrent-get`/files decoding), `AppConfig` /
 native-store precedence), `ConnectionDiagnostics` (every `TransmissionError` maps
 to a field-targeted message), **`SettingsEditor`** (add/remove/edit/default/
 refresh, name trim+dedupe, default-follows-rename, dirty detection, save, reset),
-and **`HostCandidates`/`ConnectionResolver`** (comma-list parsing incl.
-scheme/port/path/IPv6/inheritance + first-reachable failover selection).
+and **`HostCandidates`/`ConnectionResolver`** (comma- and newline-list parsing
+incl. scheme/port/path/IPv6/inheritance + first-reachable failover selection).
 A `TorrentFactory` helper builds `Torrent` values from a default JSON dict.
 
 ```sh

@@ -216,10 +216,17 @@ final class SettingsWindowController: NSWindowController {
         }
         httpsCheckbox.target = self
         httpsCheckbox.action = #selector(serverFieldChanged)
-        hostField.placeholderString = "host or comma-separated list"
-        hostField.toolTip = "One host, or a comma-separated list of fallbacks tried in "
+        hostField.placeholderString = "host, or comma/line-separated list of fallbacks"
+        hostField.toolTip = "One host, or a comma- or line-separated list of fallbacks tried in "
             + "order — e.g. 10.0.1.2, n5.local, https://transmission.example.ts.net. "
             + "Each may include a scheme/port; the app connects to the first that responds."
+        // Two-line wrapping field so a multi-host fallback list is visible at once.
+        hostField.usesSingleLineMode = false
+        hostField.lineBreakMode = .byWordWrapping
+        hostField.cell?.wraps = true
+        hostField.cell?.isScrollable = false
+        hostField.maximumNumberOfLines = 3
+        hostField.heightAnchor.constraint(greaterThanOrEqualToConstant: 40).isActive = true
         portField.placeholderString = "9091"
         rpcPathField.placeholderString = "/transmission/rpc"
         usernameField.placeholderString = "(none)"
@@ -447,10 +454,19 @@ final class SettingsWindowController: NSWindowController {
 
     // MARK: - Test Connection
 
+    /// One candidate's probe outcome.
+    private struct HostProbeResult {
+        let server: ServerConfig
+        let version: String?      // non-nil on success
+        let error: Error?         // non-nil on failure
+        var ok: Bool { version != nil }
+    }
+
     @objc private func testConnection() {
         // Test exactly what's typed in the form right now, even if not yet saved.
-        // The host field may list several comma-separated candidates; probe each in
-        // order and report the first that responds (mirrors the app's failover).
+        // The host field may list several candidates; probe EVERY one and report
+        // which ones worked (not just the first), so the user can see the full
+        // failover picture.
         let candidates = currentServerFromFields().connectionCandidates.filter { !$0.host.isEmpty }
         guard !candidates.isEmpty else {
             let alert = NSAlert()
@@ -464,50 +480,86 @@ final class SettingsWindowController: NSWindowController {
         testSpinner.startAnimation(nil)
 
         Task { [weak self] in
-            var reached: (server: ServerConfig, version: String)?
-            var firstError: Error?
-            for candidate in candidates {
-                do {
-                    let client = try TransmissionClient(server: candidate, timeout: 5)
-                    let info = try await client.fetchSession()
-                    reached = (candidate, info.version)
-                    break
-                } catch {
-                    if firstError == nil { firstError = error }
-                }
-            }
+            let results = await Self.probeAll(candidates)
             guard let self else { return }
             self.testSpinner.stopAnimation(nil)
             self.testButton.isEnabled = self.selectedIndex != nil
-            self.presentTestResult(reached: reached, firstError: firstError,
-                                   candidates: candidates)
+            self.presentTestResults(results)
         }
     }
 
-    private func presentTestResult(reached: (server: ServerConfig, version: String)?,
-                                   firstError: Error?, candidates: [ServerConfig]) {
-        let alert = NSAlert()
-        if let reached {
-            alert.alertStyle = .informational
-            alert.messageText = "Connection succeeded"
-            var text = "Connected to \(reached.server.host):\(reached.server.port)"
-            text += reached.server.useHTTPS ? " (HTTPS).\n" : ".\n"
-            text += "Transmission \(reached.version)."
-            if candidates.count > 1 {
-                text += "\n\nUsing the first of \(candidates.count) hosts that responded."
+    /// Probe all candidates concurrently; results are returned in candidate order.
+    private static func probeAll(_ candidates: [ServerConfig]) async -> [HostProbeResult] {
+        await withTaskGroup(of: (Int, HostProbeResult).self) { group in
+            for (index, candidate) in candidates.enumerated() {
+                group.addTask {
+                    do {
+                        let client = try TransmissionClient(server: candidate, timeout: 5)
+                        let info = try await client.fetchSession()
+                        return (index, HostProbeResult(server: candidate, version: info.version, error: nil))
+                    } catch {
+                        return (index, HostProbeResult(server: candidate, version: nil, error: error))
+                    }
+                }
             }
-            alert.informativeText = text
+            var byIndex: [Int: HostProbeResult] = [:]
+            for await (index, result) in group { byIndex[index] = result }
+            return candidates.indices.compactMap { byIndex[$0] }
+        }
+    }
+
+    private func endpointLabel(_ s: ServerConfig) -> String {
+        "\(s.useHTTPS ? "https" : "http")://\(s.host):\(s.port)"
+    }
+
+    private func presentTestResults(_ results: [HostProbeResult]) {
+        let okCount = results.filter(\.ok).count
+        let alert = NSAlert()
+
+        if results.count == 1 {
+            // Single host: keep the focused success/failure message.
+            let r = results[0]
+            if let version = r.version {
+                alert.alertStyle = .informational
+                alert.messageText = "Connection succeeded"
+                alert.informativeText = "Connected to \(endpointLabel(r.server)).\nTransmission \(version)."
+            } else {
+                alert.alertStyle = .warning
+                alert.messageText = "Connection failed"
+                alert.informativeText = r.error.map { ConnectionDiagnostics.message(for: $0, server: r.server) }
+                    ?? "Could not reach the server."
+            }
         } else {
-            alert.alertStyle = .warning
-            alert.messageText = "Connection failed"
-            let diag = firstError.map { ConnectionDiagnostics.message(for: $0, server: candidates[0]) }
-                ?? "Could not reach the server."
-            alert.informativeText = candidates.count > 1
-                ? "None of the \(candidates.count) hosts responded.\n\n\(diag)"
-                : diag
+            alert.alertStyle = okCount > 0 ? .informational : .warning
+            alert.messageText = okCount > 0
+                ? "\(okCount) of \(results.count) hosts responded"
+                : "No hosts responded"
+            // One line per candidate, in order. The app uses the first ✓ at runtime.
+            alert.informativeText = results.map { r in
+                if let version = r.version {
+                    return "✓  \(endpointLabel(r.server)) — Transmission \(version)"
+                } else {
+                    return "✗  \(endpointLabel(r.server)) — \(Self.shortError(r.error))"
+                }
+            }.joined(separator: "\n")
         }
         if let window { alert.beginSheetModal(for: window) }
         else { alert.runModal() }
+    }
+
+    /// A terse failure reason for the per-host list.
+    private static func shortError(_ error: Error?) -> String {
+        guard let error else { return "no response" }
+        switch error as? TransmissionError {
+        case .authenticationFailed: return "auth failed (check username/password)"
+        case .httpError(404): return "no RPC at that path (404)"
+        case .httpError(let code): return "HTTP \(code)"
+        case .connectionFailed: return "could not connect"
+        case .invalidURL: return "invalid URL"
+        case .rpcError(let m): return m
+        case .decodingFailed: return "not a Transmission RPC endpoint"
+        case .none: return error.localizedDescription
+        }
     }
 }
 

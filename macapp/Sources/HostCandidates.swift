@@ -13,7 +13,7 @@ extension ServerConfig {
     /// when off-LAN, the IP/`.local` host when on-LAN).
     var connectionCandidates: [ServerConfig] {
         let tokens = host
-            .split(separator: ",", omittingEmptySubsequences: true)
+            .split(whereSeparator: { $0 == "," || $0.isNewline })
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
         guard !tokens.isEmpty else { return [self] }   // empty host → keep as-is (fails clearly)
@@ -22,7 +22,7 @@ extension ServerConfig {
 
     /// True when the host field lists more than one candidate.
     var hasMultipleHostCandidates: Bool {
-        host.contains(",")
+        connectionCandidates.count > 1
     }
 
     /// Build a candidate `ServerConfig` from one connection-string token,
