@@ -658,14 +658,17 @@ final class MainWindowController: NSWindowController {
 
         let label = NSTextField(labelWithString: message)
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.textColor = .white
-        label.font = .systemFont(ofSize: 12)
-        label.lineBreakMode = .byTruncatingMiddle
+        label.textColor = .labelColor   // black on light, white on dark — adapts to appearance
+        label.font = .systemFont(ofSize: 18)
         label.alignment = .center
+        // Wrap long messages over multiple lines instead of truncating.
+        label.lineBreakMode = .byWordWrapping
+        label.maximumNumberOfLines = 0
+        label.preferredMaxLayoutWidth = max(200, content.bounds.width * 0.85 - 28)
 
-        let bg = NSVisualEffectView()
+        let bg = ToastView()
         bg.translatesAutoresizingMaskIntoConstraints = false
-        bg.material = .hudWindow
+        bg.material = .popover          // translucent: light in Light mode, dark in Dark mode
         bg.blendingMode = .withinWindow
         bg.state = .active
         bg.wantsLayer = true
@@ -680,24 +683,19 @@ final class MainWindowController: NSWindowController {
             label.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: 14),
             label.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -14),
             bg.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            bg.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -48),
+            bg.centerYAnchor.constraint(equalTo: content.centerYAnchor),
             bg.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor, multiplier: 0.85),
         ])
 
-        // Fade in, hold ~2.4s, fade out, remove.
+        // Fade in, hold ~2.4s, then auto-dismiss. A click dismisses early; the
+        // ToastView guards against running its fade-out twice.
         bg.alphaValue = 0
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.18
             bg.animator().alphaValue = 1
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.35
-                bg.animator().alphaValue = 0
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                bg.removeFromSuperview()
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { [weak bg] in
+            bg?.dismiss()
         }
     }
 
@@ -792,8 +790,11 @@ final class MainWindowController: NSWindowController {
     }
 
     @objc private func didDoubleClickRow() {
-        guard tableView.clickedRow >= 0 else { return }
-        renameSelected(nil)
+        guard tableView.clickedRow >= 0,
+              let t = selectionForAction().first else { return }
+        // Open the item locally if a path mapping resolves it; otherwise the same
+        // "Not available locally" toast the context-menu Open shows.
+        revealOrOpen(remotePath: remotePath(for: t), open: true, warnIfUnmapped: true)
     }
 
     // MARK: - Errors
@@ -965,6 +966,26 @@ final class AddedDateCellView: NSTableCellView {
         case .date: label.stringValue = Formatters.compactDate(epoch)
         case .dateTime: label.stringValue = Formatters.compactDateTime(epoch)
         case .full: label.stringValue = Formatters.date(epoch)
+        }
+    }
+}
+
+/// Toast background that dismisses itself (fade out + remove) on click or when the
+/// auto-timer fires, whichever comes first. The fade-out runs at most once.
+final class ToastView: NSVisualEffectView {
+    private var dismissed = false
+
+    override func mouseDown(with event: NSEvent) { dismiss() }
+
+    func dismiss() {
+        guard !dismissed, superview != nil else { return }
+        dismissed = true
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.35
+            self.animator().alphaValue = 0
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.removeFromSuperview()
         }
     }
 }

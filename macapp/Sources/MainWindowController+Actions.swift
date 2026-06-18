@@ -212,7 +212,7 @@ extension MainWindowController: NSToolbarDelegate {
 
     /// The torrents an action targets — the right-clicked row if it isn't part of
     /// the current selection, otherwise the full selection.
-    private func selectionForAction() -> [Torrent] {
+    func selectionForAction() -> [Torrent] {
         let clicked = clickedTorrent()
         let selected = selectedTorrents
         if let clicked, !selected.contains(where: { $0.id == clicked.id }) {
@@ -353,8 +353,14 @@ extension MainWindowController: NSToolbarDelegate {
     /// present locally (not mounted/synced), show a non-modal toast instead.
     /// Callers should only invoke this when a mapping exists (the menu items are
     /// disabled otherwise).
-    func revealOrOpen(remotePath: String, open: Bool) {
-        guard let local = refresh.activeServerConfig.mapRemoteToLocal(remotePath) else { return }
+    func revealOrOpen(remotePath: String, open: Bool, warnIfUnmapped: Bool = false) {
+        guard let local = refresh.activeServerConfig.mapRemoteToLocal(remotePath) else {
+            // Double-click (warnIfUnmapped) gets the same "not available" toast the
+            // context-menu Open shows; the menu items themselves stay disabled when
+            // unmapped, so they pass warnIfUnmapped = false and just no-op.
+            if warnIfUnmapped { showToast("Not available locally: \(remotePath)") }
+            return
+        }
         guard FileManager.default.fileExists(atPath: local) else {
             showToast("Not available locally: \(local)")
             return
