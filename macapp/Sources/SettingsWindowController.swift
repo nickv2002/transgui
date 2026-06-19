@@ -27,7 +27,7 @@ final class SettingsWindowController: NSWindowController {
     private let rpcPathField = NSTextField()
     private let usernameField = NSTextField()
     private let passwordField = NSSecureTextField()
-    private let pathMappingsView = NSTextView()   // multi-line: one `remote=local` per line
+    private let pathMappingsView = PlaceholderTextView()   // multi-line: one `remote=local` per line
     private let removeButton = NSButton()
     private var detailFields: [NSControl] = []
 
@@ -236,9 +236,11 @@ final class SettingsWindowController: NSWindowController {
                         rpcPathField, usernameField, passwordField]
 
         let mappingsScroll = buildPathMappingsEditor()
-        let caption = label("Remote→local, one per line.  e.g.  /video=/Volumes/Video")
+        let caption = label("Remote→local, one per line.\ne.g.  /video=/Volumes/Video")
         caption.font = .systemFont(ofSize: 10)
         caption.textColor = .secondaryLabelColor
+        caption.lineBreakMode = .byWordWrapping
+        caption.maximumNumberOfLines = 0
 
         let grid = NSGridView(views: [
             [label("Name:"), nameField],
@@ -278,6 +280,7 @@ final class SettingsWindowController: NSWindowController {
         pathMappingsView.isAutomaticDashSubstitutionEnabled = false
         pathMappingsView.isAutomaticSpellingCorrectionEnabled = false
         pathMappingsView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        pathMappingsView.placeholderString = "/video=/Volumes/Video\n/backup=/Volumes/backup"
         pathMappingsView.textContainerInset = NSSize(width: 2, height: 4)
         pathMappingsView.isVerticallyResizable = true
         pathMappingsView.isHorizontallyResizable = false
@@ -694,5 +697,30 @@ extension SettingsWindowController: NSWindowDelegate {
         default:                        // Cancel
             return false
         }
+    }
+}
+
+/// An `NSTextView` that draws greyed-out placeholder text while it is empty —
+/// `NSTextView` has no built-in placeholder the way `NSTextField` does.
+final class PlaceholderTextView: NSTextView {
+    var placeholderString: String = "" {
+        didSet { needsDisplay = true }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard string.isEmpty, !placeholderString.isEmpty else { return }
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font ?? .systemFont(ofSize: NSFont.systemFontSize),
+            .foregroundColor: NSColor.placeholderTextColor,
+        ]
+        let origin = NSPoint(x: textContainerInset.width + (textContainer?.lineFragmentPadding ?? 0),
+                             y: textContainerInset.height)
+        placeholderString.draw(at: origin, withAttributes: attrs)
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        needsDisplay = true
     }
 }

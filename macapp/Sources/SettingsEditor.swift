@@ -54,7 +54,7 @@ struct SettingsEditor: Equatable {
             name = "\(base) \(n)"; n += 1
         }
         working.servers.append(ServerConfig(
-            name: name, host: "localhost", port: 9091,
+            name: name, host: "", port: 9091,
             useHTTPS: false, rpcPath: "/transmission/rpc"))
         return working.servers.count - 1
     }
