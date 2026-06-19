@@ -2,6 +2,7 @@
 *.xcodeproj/
 # Build artifacts
 build/
+dist/
 DerivedData/
 .DS_Store
 
