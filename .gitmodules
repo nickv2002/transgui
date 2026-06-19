@@ -1,3 +1,0 @@
-[submodule "synapse/source/lib"]
-	path = synapse/source/lib
-	url = https://github.com/lighterowl/synapse.git
