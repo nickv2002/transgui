@@ -6,7 +6,7 @@ final class MainWindowController: NSWindowController {
     let refresh: RefreshController
 
     let tableView = NSTableView()
-    private let detailLabel = NSTextField(wrappingLabelWithString: "")
+    private let infoGrid = InfoGridView()
     private let statusLabel = NSTextField(labelWithString: "")
 
     /// Bottom-left fetch indicator: an animated spinner while a poll is in flight,
@@ -14,12 +14,8 @@ final class MainWindowController: NSWindowController {
     private let fetchSpinner = NSProgressIndicator()
     private let idleDot = NSImageView()
 
-    /// Speed sparkline in the Info tab, and the rolling history that feeds it.
-    private let speedGraph = SpeedGraphView()
-    private var speedHistoryId: Int?
-    private var downHistory: [Int64] = []
-    private var upHistory: [Int64] = []
-    private static let speedHistoryLimit = 60
+    /// The toast currently on screen, if any, so a new toast can replace it at once.
+    private weak var activeToast: ToastView?
 
     /// Detail-pane tabs (Info / Files) and the per-file table.
     let detailTabView = NSTabView()
@@ -248,24 +244,19 @@ final class MainWindowController: NSWindowController {
         scroll.autohidesScrollers = true
 
         // Detail pane.
-        detailLabel.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-        detailLabel.textColor = .labelColor
-        detailLabel.stringValue = "No torrent selected."
+        infoGrid.onCopy = { [weak self] value in self?.showToast("Copied: \(value)") }
+        infoGrid.update(with: nil, selectionCount: 0)
         let detailScroll = NSScrollView()
         let detailContainer = NSView()
-        detailContainer.addSubview(detailLabel)
-        detailContainer.addSubview(speedGraph)
-        detailLabel.translatesAutoresizingMaskIntoConstraints = false
-        speedGraph.translatesAutoresizingMaskIntoConstraints = false
+        detailContainer.addSubview(infoGrid)
+        infoGrid.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            detailLabel.leadingAnchor.constraint(equalTo: detailContainer.leadingAnchor, constant: 10),
-            detailLabel.trailingAnchor.constraint(equalTo: detailContainer.trailingAnchor, constant: -10),
-            detailLabel.topAnchor.constraint(equalTo: detailContainer.topAnchor, constant: 8),
-            speedGraph.leadingAnchor.constraint(equalTo: detailContainer.leadingAnchor, constant: 10),
-            speedGraph.trailingAnchor.constraint(equalTo: detailContainer.trailingAnchor, constant: -10),
-            speedGraph.topAnchor.constraint(equalTo: detailLabel.bottomAnchor, constant: 8),
-            speedGraph.heightAnchor.constraint(equalToConstant: 52),
-            speedGraph.bottomAnchor.constraint(lessThanOrEqualTo: detailContainer.bottomAnchor, constant: -8),
+            infoGrid.leadingAnchor.constraint(equalTo: detailContainer.leadingAnchor, constant: 10),
+            infoGrid.trailingAnchor.constraint(equalTo: detailContainer.trailingAnchor, constant: -10),
+            infoGrid.topAnchor.constraint(equalTo: detailContainer.topAnchor, constant: 8),
+            // Pin the bottom too so the scroll content fits the grid exactly (no
+            // trailing blank space).
+            infoGrid.bottomAnchor.constraint(equalTo: detailContainer.bottomAnchor, constant: -8),
         ])
         detailScroll.documentView = detailContainer
         detailScroll.hasVerticalScroller = true
@@ -667,6 +658,10 @@ final class MainWindowController: NSWindowController {
     func showToast(_ message: String) {
         guard let content = window?.contentView else { return }
 
+        // Replace any visible toast immediately (e.g. copying a second value) rather
+        // than letting the old one linger through its fade.
+        activeToast?.removeFromSuperview()
+
         let label = NSTextField(labelWithString: message)
         label.translatesAutoresizingMaskIntoConstraints = false
         label.textColor = .labelColor   // black on light, white on dark — adapts to appearance
@@ -687,6 +682,7 @@ final class MainWindowController: NSWindowController {
         bg.layer?.masksToBounds = true
         bg.addSubview(label)
         content.addSubview(bg)
+        activeToast = bg
 
         NSLayoutConstraint.activate([
             label.topAnchor.constraint(equalTo: bg.topAnchor, constant: 8),
@@ -713,60 +709,7 @@ final class MainWindowController: NSWindowController {
     // MARK: - Detail pane
 
     private func updateDetail() {
-        guard let t = selectedTorrents.first else {
-            detailLabel.stringValue = selectedTorrents.isEmpty
-                ? "No torrent selected."
-                : "\(selectedTorrents.count) torrents selected."
-            resetSpeedHistory(for: nil)
-            return
-        }
-        let downloaded = t.sizeWhenDone - t.leftUntilDone
-        func dash(_ s: String) -> String { s.isEmpty ? "—" : s }
-        var lines: [String] = []
-        lines.append("Name:          \(t.name)")
-        lines.append("Status:        \(t.status.displayName)")
-        if t.hasError {
-            lines.append("Error:         [\(t.errorCode)] \(t.errorString)")
-        }
-        lines.append("Progress:      \(Formatters.percent(t.percentDone))")
-        lines.append("Size:          \(Formatters.size(t.totalSize)) (want \(Formatters.size(t.sizeWhenDone)))")
-        lines.append("Downloaded:    \(Formatters.size(downloaded)) (ever \(Formatters.size(t.downloadedEver)))")
-        lines.append("Uploaded:      \(Formatters.size(t.uploadedEver))")
-        lines.append("Ratio:         \(Formatters.ratio(t.uploadRatio))")
-        lines.append("Priority:      \(t.bandwidthPriority.displayName)")
-        lines.append("Queue:         \(t.queuePosition + 1)")
-        lines.append("Download:      \(dash(Formatters.speed(t.rateDownload)))")
-        lines.append("Upload:        \(dash(Formatters.speed(t.rateUpload)))")
-        lines.append("ETA:           \(dash(t.etaDisplay))")
-        lines.append("Location:      \(t.downloadDir)")
-        lines.append("Peers:         \(t.peersConnected) connected (↓\(t.peersSendingToUs) ↑\(t.peersGettingFromUs))")
-        if let host = t.trackerHost { lines.append("Tracker:       \(host)") }
-        lines.append("Added:         \(Formatters.dateTime(t.addedDate))")
-        if t.doneDate > 0 { lines.append("Completed:     \(Formatters.dateTime(t.doneDate))") }
-        lines.append("Last activity: \(Formatters.dateTime(t.activityDate))")
-        if !t.comment.isEmpty { lines.append("Comment:       \(t.comment)") }
-        lines.append("Hash:          \(t.hashString)")
-        detailLabel.stringValue = lines.joined(separator: "\n")
-
-        appendSpeedHistory(for: t)
-    }
-
-    /// Reset the speed sparkline (selection changed or nothing selected).
-    private func resetSpeedHistory(for id: Int?) {
-        speedHistoryId = id
-        downHistory = []
-        upHistory = []
-        speedGraph.update(download: [], upload: [])
-    }
-
-    /// Append the selected torrent's current speeds to the rolling history.
-    private func appendSpeedHistory(for t: Torrent) {
-        if speedHistoryId != t.id { resetSpeedHistory(for: t.id) }
-        downHistory.append(t.rateDownload)
-        upHistory.append(t.rateUpload)
-        if downHistory.count > Self.speedHistoryLimit { downHistory.removeFirst() }
-        if upHistory.count > Self.speedHistoryLimit { upHistory.removeFirst() }
-        speedGraph.update(download: downHistory, upload: upHistory)
+        infoGrid.update(with: selectedTorrents.first, selectionCount: selectedTorrents.count)
     }
 
     /// Text shown for a torrent in a given column (shared by the cell view and the
