@@ -5,7 +5,7 @@ import AppKit
 final class MainWindowController: NSWindowController {
     let refresh: RefreshController
 
-    let tableView = NSTableView()
+    let tableView = TorrentTableView()
     private let infoGrid = InfoGridView()
     private let statusLabel = NSTextField(labelWithString: "")
 
@@ -236,6 +236,10 @@ final class MainWindowController: NSWindowController {
         tableView.target = self
         tableView.doubleAction = #selector(didDoubleClickRow)
         tableView.menu = rowContextMenu()
+        tableView.onReturnKey = { [weak self] in
+            guard let self, self.selectedTorrents.count == 1 else { return }
+            self.renameSelected(nil)
+        }
 
         let scroll = NSScrollView()
         scroll.documentView = tableView
@@ -920,6 +924,19 @@ final class AddedDateCellView: NSTableCellView {
         case .date: label.stringValue = Formatters.compactDate(epoch)
         case .dateTime: label.stringValue = Formatters.compactDateTime(epoch)
         case .full: label.stringValue = Formatters.date(epoch)
+        }
+    }
+}
+
+/// Torrent list table — intercepts Return to trigger rename on single selection.
+final class TorrentTableView: NSTableView {
+    var onReturnKey: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 { // Return
+            onReturnKey?()
+        } else {
+            super.keyDown(with: event)
         }
     }
 }
