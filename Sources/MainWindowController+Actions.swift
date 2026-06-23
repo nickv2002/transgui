@@ -69,7 +69,7 @@ extension MainWindowController: NSToolbarDelegate {
         case ToolbarID.rename: spec = ("Rename", "pencil", #selector(renameSelected(_:)))
         case ToolbarID.move: spec = ("Move", "folder", #selector(moveSelected(_:)))
         case ToolbarID.verify: spec = ("Verify", "checkmark.shield", #selector(verifySelected(_:)))
-        case ToolbarID.remove: spec = ("Remove", "trash", #selector(removeSelected(_:)))
+        case ToolbarID.remove: spec = ("Remove…", "trash", #selector(removeSelected(_:)))
         default: spec = nil
         }
         guard let spec else { return nil }
@@ -115,9 +115,10 @@ extension MainWindowController: NSToolbarDelegate {
 
     func rowContextMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(withTitle: "Start", action: #selector(startSelected(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "Stop", action: #selector(stopSelected(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "Force Start", action: #selector(forceStartSelected(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Start", action: #selector(startSelected(_:)), keyEquivalent: "\r")
+        menu.addItem(withTitle: "Stop", action: #selector(stopSelected(_:)), keyEquivalent: ".")
+        menu.addItem(withTitle: "Force Start", action: #selector(forceStartSelected(_:)), keyEquivalent: "\r")
+            .keyEquivalentModifierMask = [.command, .option]
         menu.addItem(.separator())
         menu.addItem(withTitle: "Verify", action: #selector(verifySelected(_:)), keyEquivalent: "")
 
@@ -146,14 +147,26 @@ extension MainWindowController: NSToolbarDelegate {
         priorityItem.submenu = priorityMenu
 
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Reveal in Finder", action: #selector(revealInFinderSelected(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Reveal in Finder", action: #selector(revealInFinderSelected(_:)), keyEquivalent: "r")
+            .keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(withTitle: "Open", action: #selector(openSelected(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Rename…", action: #selector(renameSelected(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Move…", action: #selector(moveSelected(_:)), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Remove…", action: #selector(removeSelected(_:)), keyEquivalent: "")
-        for item in menu.items where item.action != nil { item.target = self }
+        // "Remove Torrent" — no confirmation needed (reversible: just removes from daemon).
+        let removeItem = menu.addItem(withTitle: "Remove Torrent", action: #selector(removeTorrentDirectly(_:)), keyEquivalent: "")
+        removeItem.target = self
+
+        // "Remove + Data" — confirmation by default; Option skips it.
+        let removeDataItem = menu.addItem(withTitle: "Remove Torrent + Data…", action: #selector(removeTorrentWithDataConfirm(_:)), keyEquivalent: "")
+        removeDataItem.target = self
+        let removeDataAlt = menu.addItem(withTitle: "Remove + Data Without Confirmation", action: #selector(removeTorrentWithDataDirectly(_:)), keyEquivalent: "")
+        removeDataAlt.target = self
+        removeDataAlt.isAlternate = true
+        removeDataAlt.keyEquivalentModifierMask = .option
+
+        for item in menu.items where item.action != nil && item.target == nil { item.target = self }
         return menu
     }
 
@@ -203,6 +216,9 @@ extension MainWindowController: NSToolbarDelegate {
         case #selector(renameSelected(_:)), #selector(moveSelected(_:)):
             return selection.count == 1
         case #selector(verifySelected(_:)), #selector(removeSelected(_:)),
+             #selector(removeTorrentDirectly(_:)),
+             #selector(removeTorrentWithDataConfirm(_:)),
+             #selector(removeTorrentWithDataDirectly(_:)),
              #selector(queueMoveSelected(_:)), #selector(setPrioritySelected(_:)):
             return true
         default:
@@ -310,6 +326,27 @@ extension MainWindowController: NSToolbarDelegate {
                 break   // Cancel
             }
         }
+    }
+
+    /// Context-menu "Remove Torrent" — no confirmation (removing from the daemon is reversible via re-add).
+    @objc func removeTorrentDirectly(_ sender: Any?) {
+        let ids = selectionForAction().map(\.id)
+        guard !ids.isEmpty else { return }
+        runRPC { try await $0.remove(ids: ids, deleteLocalData: false) }
+    }
+
+    /// Context-menu "Remove Torrent + Data…" — one destructive-action confirmation, then deletes files.
+    @objc func removeTorrentWithDataConfirm(_ sender: Any?) {
+        let targets = selectionForAction()
+        guard !targets.isEmpty else { return }
+        confirmDeleteWithData(ids: targets.map(\.id), count: targets.count)
+    }
+
+    /// Context-menu Option-held "Remove + Data Without Confirmation" — skips confirmation entirely.
+    @objc func removeTorrentWithDataDirectly(_ sender: Any?) {
+        let ids = selectionForAction().map(\.id)
+        guard !ids.isEmpty else { return }
+        runRPC { try await $0.remove(ids: ids, deleteLocalData: true) }
     }
 
     /// Second confirmation before the irreversible "delete files too" path.

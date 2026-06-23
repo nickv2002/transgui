@@ -162,6 +162,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         find.target = self
         editMenuItem.submenu = editMenu
 
+        // Torrent menu — mirrors the right-click context menu. Targets are nil so
+        // actions route through the first-responder chain to MainWindowController.
+        let torrentMenuItem = NSMenuItem()
+        mainMenu.addItem(torrentMenuItem)
+        let torrentMenu = NSMenu(title: "Torrent")
+
+        torrentMenu.addItem(withTitle: "Start",
+                            action: #selector(MainWindowController.startSelected(_:)),
+                            keyEquivalent: "\r")
+        torrentMenu.addItem(withTitle: "Stop",
+                            action: #selector(MainWindowController.stopSelected(_:)),
+                            keyEquivalent: ".")
+        torrentMenu.addItem(withTitle: "Force Start",
+                            action: #selector(MainWindowController.forceStartSelected(_:)),
+                            keyEquivalent: "\r")
+            .keyEquivalentModifierMask = [.command, .option]
+
+        torrentMenu.addItem(.separator())
+
+        torrentMenu.addItem(withTitle: "Verify",
+                            action: #selector(MainWindowController.verifySelected(_:)),
+                            keyEquivalent: "")
+
+        let queueSub = NSMenu(title: "Queue")
+        for (title, tag) in [("Move to Top", 0), ("Move Up", 1),
+                              ("Move Down", 2), ("Move to Bottom", 3)] {
+            queueSub.addItem(withTitle: title,
+                             action: #selector(MainWindowController.queueMoveSelected(_:)),
+                             keyEquivalent: "").tag = tag
+        }
+        torrentMenu.addItem(withTitle: "Queue", action: nil, keyEquivalent: "")
+            .submenu = queueSub
+
+        let prioritySub = NSMenu(title: "Priority")
+        for p in [BandwidthPriority.high, .normal, .low] {
+            prioritySub.addItem(withTitle: p.displayName,
+                                action: #selector(MainWindowController.setPrioritySelected(_:)),
+                                keyEquivalent: "").tag = p.rawValue
+        }
+        torrentMenu.addItem(withTitle: "Priority", action: nil, keyEquivalent: "")
+            .submenu = prioritySub
+
+        torrentMenu.addItem(.separator())
+
+        torrentMenu.addItem(withTitle: "Reveal in Finder",
+                            action: #selector(MainWindowController.revealInFinderSelected(_:)),
+                            keyEquivalent: "r")
+            .keyEquivalentModifierMask = [.command, .shift]
+        torrentMenu.addItem(withTitle: "Open",
+                            action: #selector(MainWindowController.openSelected(_:)),
+                            keyEquivalent: "")
+
+        torrentMenu.addItem(.separator())
+
+        torrentMenu.addItem(withTitle: "Rename…",
+                            action: #selector(MainWindowController.renameSelected(_:)),
+                            keyEquivalent: "")
+        torrentMenu.addItem(withTitle: "Move…",
+                            action: #selector(MainWindowController.moveSelected(_:)),
+                            keyEquivalent: "")
+
+        torrentMenu.addItem(.separator())
+
+        // "Remove Torrent" needs no confirmation; "Remove + Data…" does — Option skips it.
+        torrentMenu.addItem(withTitle: "Remove Torrent",
+                            action: #selector(MainWindowController.removeTorrentDirectly(_:)),
+                            keyEquivalent: "\u{08}")
+        do {
+            let item = torrentMenu.addItem(withTitle: "Remove Torrent + Data…",
+                                           action: #selector(MainWindowController.removeTorrentWithDataConfirm(_:)),
+                                           keyEquivalent: "\u{08}")
+            item.keyEquivalentModifierMask = [.command, .shift]
+        }
+        do {
+            let alt = torrentMenu.addItem(withTitle: "Remove + Data Without Confirmation",
+                                          action: #selector(MainWindowController.removeTorrentWithDataDirectly(_:)),
+                                          keyEquivalent: "\u{08}")
+            alt.isAlternate = true
+            alt.keyEquivalentModifierMask = [.command, .shift, .option]
+        }
+
+        torrentMenuItem.submenu = torrentMenu
+
         // Server menu — lists the configured servers; the active one is checked.
         let serverMenuItem = NSMenuItem()
         mainMenu.addItem(serverMenuItem)
