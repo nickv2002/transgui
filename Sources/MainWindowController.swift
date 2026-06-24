@@ -318,6 +318,7 @@ final class MainWindowController: NSWindowController {
         idleDot.contentTintColor = .systemGray
         idleDot.symbolConfiguration = .init(pointSize: 8, weight: .regular)
         idleDot.translatesAutoresizingMaskIntoConstraints = false
+        idleDot.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(dotClicked(_:))))
 
         let statusBar = NSView()
         statusBar.addSubview(fetchSpinner)
@@ -477,6 +478,10 @@ final class MainWindowController: NSWindowController {
         case .failed: return .systemRed
         case .idle, .connecting: return .systemGray
         }
+    }
+
+    @objc private func dotClicked(_ sender: Any?) {
+        refresh.refreshNow()
     }
 
     private func applyTorrents(_ incoming: [Torrent]) {

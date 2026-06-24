@@ -268,6 +268,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.representedObject = name
             item.state = (name == active) ? .on : .off
         }
+        serverMenu.addItem(.separator())
+        let refreshItem = serverMenu.addItem(withTitle: "Refresh Now",
+                                              action: #selector(refreshNow(_:)), keyEquivalent: "r")
+        refreshItem.target = self
+        refreshItem.isEnabled = true
+    }
+
+    @objc private func refreshNow(_ sender: Any?) {
+        windowController?.refresh.refreshNow()
     }
 
     @objc private func selectServer(_ sender: NSMenuItem) {
