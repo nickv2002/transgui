@@ -1,8 +1,9 @@
 import Foundation
 
 /// Builds a `Torrent` for tests by decoding a default JSON object with overrides.
-/// `Torrent` decodes every field (no `decodeIfPresent`), so the base dictionary
-/// supplies all keys; pass `overrides` to change specific ones.
+/// The base dictionary supplies every key (so the factory is unaffected by
+/// `Torrent`'s tolerant `decodeIfPresent` decoding); pass `overrides` to change
+/// specific ones.
 enum TorrentFactory {
     static func make(_ overrides: [String: Any] = [:]) -> Torrent {
         var dict: [String: Any] = [

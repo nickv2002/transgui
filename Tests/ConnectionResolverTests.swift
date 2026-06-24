@@ -48,4 +48,44 @@ final class ConnectionResolverTests: XCTestCase {
         let chosen = await ConnectionResolver.firstReachable([]) { _ in true }
         XCTAssertNil(chosen)
     }
+
+    // MARK: - firstToRespond (concurrent racer)
+
+    func testFirstToRespondReturnsAResponder() async {
+        let cands = [server("a"), server("b"), server("c")]
+        let reachable: Set<String> = ["b", "c"]
+        let chosen = await ConnectionResolver.firstToRespond(cands) { s in
+            reachable.contains(s.host) ? s.host : nil
+        }
+        XCTAssertNotNil(chosen)
+        XCTAssertTrue(reachable.contains(chosen!))
+    }
+
+    func testFirstToRespondReturnsNilWhenNoneRespond() async {
+        let cands = [server("a"), server("b")]
+        let chosen: String? = await ConnectionResolver.firstToRespond(cands) { _ in nil }
+        XCTAssertNil(chosen)
+    }
+
+    func testFirstToRespondEmptyReturnsNil() async {
+        let chosen: String? = await ConnectionResolver.firstToRespond([]) { $0.host }
+        XCTAssertNil(chosen)
+    }
+
+    /// The key win: a fast responder returns promptly even when a slower (dead)
+    /// candidate would block it — proving no sequential timeout stacking.
+    func testFirstToRespondDoesNotWaitForSlowLoser() async {
+        let cands = [server("slow"), server("fast")]
+        let started = Date()
+        let chosen: String? = await ConnectionResolver.firstToRespond(cands) { s in
+            if s.host == "slow" {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)   // 3s "timeout"
+                return nil
+            }
+            return s.host   // "fast" responds immediately
+        }
+        let elapsed = Date().timeIntervalSince(started)
+        XCTAssertEqual(chosen, "fast")
+        XCTAssertLessThan(elapsed, 1.0, "fast winner should not wait for the slow loser")
+    }
 }

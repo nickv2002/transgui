@@ -146,6 +146,46 @@ struct Torrent: Codable, Sendable, Identifiable, Equatable {
         case seedRatioModeRaw = "seedRatioMode"
     }
 
+    /// Tolerant decode: identity/display fields are required, but the heavier or
+    /// secondary fields (`trackers`, `comment`, peers, ever-totals, dates, seed
+    /// ratio) `decodeIfPresent` with defaults. This lets a slim first poll
+    /// (`firstFetchFields`) omit them for a faster cold paint while a later full
+    /// poll fills them in — and makes decoding robust to protocol variance.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        statusRaw = try c.decode(Int.self, forKey: .statusRaw)
+        percentDone = try c.decode(Double.self, forKey: .percentDone)
+        totalSize = try c.decode(Int64.self, forKey: .totalSize)
+        sizeWhenDone = try c.decode(Int64.self, forKey: .sizeWhenDone)
+        leftUntilDone = try c.decode(Int64.self, forKey: .leftUntilDone)
+        rateDownload = try c.decode(Int64.self, forKey: .rateDownload)
+        rateUpload = try c.decode(Int64.self, forKey: .rateUpload)
+        eta = try c.decode(Int.self, forKey: .eta)
+        uploadRatio = try c.decode(Double.self, forKey: .uploadRatio)
+        downloadDir = try c.decode(String.self, forKey: .downloadDir)
+        // Present in the slim set, but defaulted to stay tolerant.
+        errorString = try c.decodeIfPresent(String.self, forKey: .errorString) ?? ""
+        addedDate = try c.decodeIfPresent(Double.self, forKey: .addedDate) ?? 0
+        hashString = try c.decodeIfPresent(String.self, forKey: .hashString) ?? ""
+        queuePosition = try c.decodeIfPresent(Int.self, forKey: .queuePosition) ?? 0
+        bandwidthPriorityRaw = try c.decodeIfPresent(Int.self, forKey: .bandwidthPriorityRaw) ?? 0
+        errorCode = try c.decodeIfPresent(Int.self, forKey: .errorCode) ?? 0
+        // Omitted by the slim first poll; arrive on the next full poll.
+        trackers = try c.decodeIfPresent([TrackerInfo].self, forKey: .trackers) ?? []
+        comment = try c.decodeIfPresent(String.self, forKey: .comment) ?? ""
+        peersConnected = try c.decodeIfPresent(Int.self, forKey: .peersConnected) ?? 0
+        peersSendingToUs = try c.decodeIfPresent(Int.self, forKey: .peersSendingToUs) ?? 0
+        peersGettingFromUs = try c.decodeIfPresent(Int.self, forKey: .peersGettingFromUs) ?? 0
+        doneDate = try c.decodeIfPresent(Double.self, forKey: .doneDate) ?? 0
+        activityDate = try c.decodeIfPresent(Double.self, forKey: .activityDate) ?? 0
+        downloadedEver = try c.decodeIfPresent(Int64.self, forKey: .downloadedEver) ?? 0
+        uploadedEver = try c.decodeIfPresent(Int64.self, forKey: .uploadedEver) ?? 0
+        seedRatioLimit = try c.decodeIfPresent(Double.self, forKey: .seedRatioLimit) ?? 0
+        seedRatioModeRaw = try c.decodeIfPresent(Int.self, forKey: .seedRatioModeRaw) ?? 0
+    }
+
     var status: TorrentStatus { TorrentStatus(rawValue: statusRaw) ?? .stopped }
 
     /// True while the torrent is actually transferring (has up/down throughput).
@@ -235,6 +275,19 @@ struct Torrent: Codable, Sendable, Identifiable, Equatable {
         "bandwidthPriority", "trackers", "comment", "error", "doneDate",
         "activityDate", "downloadedEver", "uploadedEver", "seedRatioLimit",
         "seedRatioMode",
+    ]
+
+    /// A slimmer field set for the very first poll after a fresh connect, so the
+    /// cold list paints sooner — especially over high-latency LTE. Drops the two
+    /// heaviest contributors (the per-torrent `trackers` array and `comment`) plus
+    /// peer/ever/date extras not shown in the default columns. The sidebar tracker
+    /// grouping and Info-pane comment fill in on the next (full) poll. Decoding
+    /// tolerates the omitted fields via `init(from:)`.
+    static let firstFetchFields = [
+        "id", "name", "status", "percentDone", "totalSize", "sizeWhenDone",
+        "leftUntilDone", "rateDownload", "rateUpload", "eta", "uploadRatio",
+        "downloadDir", "error", "errorString", "addedDate", "hashString",
+        "queuePosition", "bandwidthPriority",
     ]
 }
 

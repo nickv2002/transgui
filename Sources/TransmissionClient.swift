@@ -1,5 +1,14 @@
 import Foundation
 
+/// Lightweight verification logging, gated by the `TR_PERF_LOG=1` environment
+/// variable (off by default). Used to capture cold-start resolve/paint timings
+/// and first-fetch payload size for before/after comparison. Emitted via `NSLog`
+/// so it shows in Console.app even when the app is launched via `open`.
+let trPerfLogEnabled = ProcessInfo.processInfo.environment["TR_PERF_LOG"] == "1"
+func perfLog(_ message: @autoclosure () -> String) {
+    if trPerfLogEnabled { NSLog("[perf] %@", message()) }
+}
+
 /// Errors surfaced by `TransmissionClient`.
 enum TransmissionError: LocalizedError {
     case invalidURL
@@ -71,8 +80,8 @@ actor TransmissionClient {
         return info
     }
 
-    func fetchTorrents() async throws -> [Torrent] {
-        let args: [String: Any] = ["fields": Torrent.requestedFields]
+    func fetchTorrents(fields: [String] = Torrent.requestedFields) async throws -> [Torrent] {
+        let args: [String: Any] = ["fields": fields]
         let response: RPCResponse<TorrentListArguments> = try await send(method: "torrent-get", arguments: args)
         return response.arguments?.torrents ?? []
     }
@@ -205,6 +214,10 @@ actor TransmissionClient {
         ])
 
         let (data, http) = try await perform(body: body, allowRetry: true)
+
+        if trPerfLogEnabled, method == "torrent-get" {
+            perfLog("torrent-get response: \(data.count) bytes")
+        }
 
         guard http.statusCode == 200 else {
             switch http.statusCode {

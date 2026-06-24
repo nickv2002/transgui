@@ -82,4 +82,30 @@ enum ConnectionResolver {
         }
         return nil
     }
+
+    /// Probe all candidates **concurrently** and return the first probe result that
+    /// is non-nil, cancelling the rest. Unlike `firstReachable`, order is irrelevant
+    /// — the fastest responder wins — so a dead/hanging candidate never blocks a
+    /// reachable one behind it (the cold-start latency collapses from the sum of the
+    /// dead hosts' timeouts to roughly one round-trip). Pure: the network probe is
+    /// injected, so selection is unit-tested without sockets. The generic payload
+    /// lets the winning probe hand back an already-connected client.
+    static func firstToRespond<T: Sendable>(
+        _ candidates: [ServerConfig],
+        probe: @Sendable @escaping (ServerConfig) async -> T?
+    ) async -> T? {
+        guard !candidates.isEmpty else { return nil }
+        return await withTaskGroup(of: T?.self) { group in
+            for candidate in candidates {
+                group.addTask { await probe(candidate) }
+            }
+            for await result in group {
+                if let result {
+                    group.cancelAll()
+                    return result
+                }
+            }
+            return nil
+        }
+    }
 }

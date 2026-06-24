@@ -92,6 +92,45 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(resp.arguments?.torrents.first?.name, "A")
     }
 
+    /// A slim first-poll response omits the heavier fields; decoding must tolerate
+    /// their absence with safe defaults (matching `firstFetchFields`).
+    func testTorrentDecodesWithSlimFields() {
+        // Only the fields in `firstFetchFields` are present (no trackers, comment,
+        // peers, ever-totals, dates, or seed ratio).
+        let json = """
+        {"result":"success","arguments":{"torrents":[
+          {"id":7,"name":"A","status":4,"percentDone":0.1,"totalSize":10,"sizeWhenDone":10,
+           "leftUntilDone":9,"rateDownload":1,"rateUpload":2,"eta":100,"uploadRatio":0.0,
+           "downloadDir":"/d","error":0,"errorString":"","addedDate":0,"hashString":"h",
+           "queuePosition":0,"bandwidthPriority":0}
+        ]}}
+        """
+        let resp = try! JSONDecoder().decode(
+            RPCResponse<TorrentListArguments>.self, from: Data(json.utf8))
+        let t = resp.arguments!.torrents.first!
+        XCTAssertEqual(t.id, 7)
+        XCTAssertEqual(t.name, "A")
+        // Omitted fields default rather than failing to decode.
+        XCTAssertEqual(t.trackers, [])
+        XCTAssertEqual(t.comment, "")
+        XCTAssertNil(t.trackerHost)
+        XCTAssertEqual(t.peersConnected, 0)
+        XCTAssertEqual(t.downloadedEver, 0)
+        XCTAssertEqual(t.uploadedEver, 0)
+        XCTAssertEqual(t.seedRatioMode, .global)
+    }
+
+    /// `firstFetchFields` must be a subset of the full set and must exclude the
+    /// heavy fields it exists to drop.
+    func testFirstFetchFieldsDropsHeavyFields() {
+        let slim = Set(Torrent.firstFetchFields)
+        let full = Set(Torrent.requestedFields)
+        XCTAssertTrue(slim.isSubset(of: full))
+        XCTAssertFalse(slim.contains("trackers"))
+        XCTAssertFalse(slim.contains("comment"))
+        XCTAssertLessThan(slim.count, full.count)
+    }
+
     func testFilesEntryMergesFilesAndStats() {
         let json = """
         {"id":1,"files":[

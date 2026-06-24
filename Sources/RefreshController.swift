@@ -135,10 +135,32 @@ final class RefreshController {
     /// fails over quickly; a reachable host answers in well under this.
     private let probeTimeout: TimeInterval = 5
 
+    /// Tighter timeout for the single "last-good host" fast-path probe, so a host
+    /// that has since become unreachable doesn't delay falling back to racing.
+    private let fastPathTimeout: TimeInterval = 1.5
+
+    /// Set once the first torrent list has been fetched. The very first poll after
+    /// a fresh connect requests a slim field set (`Torrent.firstFetchFields`) for a
+    /// faster cold paint; subsequent polls request the full set.
+    private var hasFetchedTorrentsOnce = false
+
+    /// The reachable client + its session info from a successful probe. `Sendable`
+    /// so the winning concurrent probe can hand the already-connected client back.
+    private struct ResolvedConnection: Sendable {
+        let client: TransmissionClient
+        let server: ServerConfig
+        let info: SessionInfo
+    }
+
+    /// UserDefaults key for the host that last answered for the active server, so
+    /// the next launch can try it first (one quick probe) before racing all hosts.
+    private var lastGoodHostKey: String { "LastGoodHost.\(selectedServerName)" }
+
     private func restart() {
         stop()
         client = nil
         resolvedServer = nil
+        hasFetchedTorrentsOnce = false
         state = .connecting
         loopTask = Task { [weak self] in
             await self?.runLoop()
@@ -168,34 +190,72 @@ final class RefreshController {
         isFetching = true
         defer { isFetching = false }
 
+        let started = Date()
         let candidates = activeServer.connectionCandidates
-        var lastError: Error?
-        for candidate in candidates {
-            if Task.isCancelled { return }
-            do {
-                let client = try TransmissionClient(server: candidate, timeout: probeTimeout)
-                let info = try await client.fetchSession()
-                self.client = client
-                self.resolvedServer = candidate
-                defaultDownloadDir = info.downloadDir
-                hasConnectedOnce = true
-                state = .connected(version: info.version)
-                return
-            } catch {
-                lastError = error
-                continue
-            }
+
+        // Fast path: try the host that worked last time, alone, with a tight
+        // timeout. The common case (still reachable) connects in one round-trip
+        // without spinning up a client per candidate.
+        if let saved = UserDefaults.standard.string(forKey: lastGoodHostKey),
+           let lastGood = candidates.first(where: { $0.host == saved }),
+           !Task.isCancelled,
+           let resolved = await Self.probe(lastGood, timeout: fastPathTimeout) {
+            adopt(resolved)
+            perfLog("resolved in \(ms(since: started)) via \(endpoint(resolved.server)) (fast-path)")
+            return
+        }
+
+        if Task.isCancelled { return }
+
+        // Race every candidate concurrently; the fastest responder wins, so a
+        // dead/hanging host never blocks a reachable one behind it.
+        let raced = await ConnectionResolver.firstToRespond(candidates) { [probeTimeout] candidate in
+            await Self.probe(candidate, timeout: probeTimeout)
+        }
+        if let raced {
+            adopt(raced)
+            perfLog("resolved in \(ms(since: started)) via \(endpoint(raced.server)) (raced \(candidates.count))")
+            return
         }
 
         // No candidate responded. Before the first-ever success, stay `.connecting`
         // (the loop keeps retrying) so the first paint never flashes an error.
-        let detail = (lastError as? LocalizedError)?.errorDescription
-            ?? lastError?.localizedDescription
-            ?? "Could not reach any configured host."
+        let detail = "Could not reach any configured host."
         let message = candidates.count > 1
             ? "Could not reach any of the \(candidates.count) configured hosts. \(detail)"
             : detail
         state = hasConnectedOnce ? .failed(message) : .connecting
+    }
+
+    /// Adopt a resolved connection as the live client and publish connected state.
+    private func adopt(_ resolved: ResolvedConnection) {
+        client = resolved.client
+        resolvedServer = resolved.server
+        defaultDownloadDir = resolved.info.downloadDir
+        hasConnectedOnce = true
+        UserDefaults.standard.set(resolved.server.host, forKey: lastGoodHostKey)
+        state = .connected(version: resolved.info.version)
+    }
+
+    /// Build a client for `candidate`, run `session-get`, and return the connected
+    /// client on success or nil on any failure. `nonisolated static` so it is
+    /// `Sendable`-safe to call from concurrent probe tasks.
+    nonisolated private static func probe(_ candidate: ServerConfig, timeout: TimeInterval) async -> ResolvedConnection? {
+        do {
+            let client = try TransmissionClient(server: candidate, timeout: timeout)
+            let info = try await client.fetchSession()
+            return ResolvedConnection(client: client, server: candidate, info: info)
+        } catch {
+            return nil
+        }
+    }
+
+    private func ms(since start: Date) -> String {
+        "\(Int(Date().timeIntervalSince(start) * 1000))ms"
+    }
+
+    private func endpoint(_ s: ServerConfig) -> String {
+        "\(s.useHTTPS ? "https" : "http")://\(s.host):\(s.port)"
     }
 
     /// Poll torrents (+ free space). Returns false if the request failed, so the
@@ -204,10 +264,28 @@ final class RefreshController {
     private func poll(client: TransmissionClient) async -> Bool {
         isFetching = true
         defer { isFetching = false }
+
+        // The first poll after a fresh connect uses a slim field set for a faster
+        // cold paint; later polls fetch the full set (so trackers/comment/etc. fill
+        // in).
+        let firstFetch = !hasFetchedTorrentsOnce
+        let fields = firstFetch ? Torrent.firstFetchFields : Torrent.requestedFields
+        let started = Date()
+
         do {
-            let torrents = try await client.fetchTorrents()
-            if let dir = defaultDownloadDir {
-                freeSpace = try? await client.freeSpace(path: dir)
+            // Fetch torrents and free space concurrently so free space no longer
+            // adds a serial round-trip in front of the first paint.
+            let dir = defaultDownloadDir
+            async let torrentsTask = client.fetchTorrents(fields: fields)
+            async let freeTask: Int64? = {
+                guard let dir else { return nil }
+                return try? await client.freeSpace(path: dir)
+            }()
+            let torrents = try await torrentsTask
+            freeSpace = await freeTask
+            if firstFetch {
+                perfLog("first list: \(torrents.count) torrents, fetch \(ms(since: started)) (slim)")
+                hasFetchedTorrentsOnce = true
             }
             onTorrents?(torrents)
             return true
