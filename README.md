@@ -51,11 +51,14 @@ from `project.yml` (committed). The generated `.xcodeproj` and `build/` are
 gitignored.
 
 ```sh
-xcodegen generate          # only after editing project.yml / adding files
-xcodebuild -project TransmissionRemote.xcodeproj -scheme TransmissionRemote \
-  -configuration Debug build
-open ~/Library/Developer/Xcode/DerivedData/TransmissionRemote-*/Build/Products/Debug/"Transmission Remote.app"
+make dev     # regenerate project, debug build, and open the app
+make test    # run unit tests
+make clean   # remove DerivedData
+make         # list all available targets
 ```
+
+The release pipeline (`make release`) handles signing, notarization, changelog,
+tagging, and publishing a GitHub release in one shot.
 
 See [`CLAUDE.md`](CLAUDE.md) for architecture notes, source layout, and
 testing details.
