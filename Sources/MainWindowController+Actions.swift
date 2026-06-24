@@ -18,7 +18,8 @@ extension MainWindowController: NSToolbarDelegate {
         let toolbar = NSToolbar(identifier: "MainToolbar")
         toolbar.delegate = self
         toolbar.displayMode = .iconAndLabel
-        toolbar.allowsUserCustomization = false
+        toolbar.allowsUserCustomization = true
+        toolbar.autosavesConfiguration = true
         window?.toolbar = toolbar
     }
 
@@ -30,7 +31,9 @@ extension MainWindowController: NSToolbarDelegate {
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
+        [ToolbarID.add, ToolbarID.start, ToolbarID.stop, ToolbarID.forceStart,
+         ToolbarID.rename, ToolbarID.move, ToolbarID.verify, ToolbarID.remove,
+         ToolbarID.search, .space, .flexibleSpace]
     }
 
     func toolbar(_ toolbar: NSToolbar,
