@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.06.24.1 — 2026-06-24
+
+- Add make help default and dev/run/clean targets
+- Speed up cold first refresh, especially over LTE
+- Add manual refresh via Server menu (⌘R) and idle-dot click
+- Show aggregate stats in Info pane for multi-torrent selection
+- Enable standard macOS toolbar customization
+
 ## 2026.06.23.1 — 2026-06-23
 
 - makefile
