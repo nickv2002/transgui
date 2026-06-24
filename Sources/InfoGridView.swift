@@ -135,6 +135,7 @@ final class InfoGridView: NSView {
     /// Identity of what's currently rendered, so polls that don't change the
     /// structure update values in place instead of rebuilding.
     private var currentTorrentId: Int?
+    private var currentSelectionIds: Set<Int> = []
     private var currentSignature: [String] = []
 
     private static let maxColumns = 4
@@ -149,26 +150,40 @@ final class InfoGridView: NSView {
 
     // MARK: - Update
 
-    /// Render the selected torrent, or a placeholder when nothing / many are
-    /// selected. Reuses the existing cards (updating only their values) when the
-    /// structure is unchanged, so the ~4s poll doesn't rebuild the grid each time.
-    func update(with torrent: Torrent?, selectionCount: Int) {
-        guard let t = torrent else {
-            showPlaceholder(selectionCount == 0
-                ? "No torrent selected."
-                : "\(selectionCount) torrents selected.")
-            return
+    /// Render the selected torrents, or a placeholder when nothing is selected.
+    /// Reuses the existing cards (updating only their values) when the structure
+    /// is unchanged, so the ~4s poll doesn't rebuild the grid each time.
+    func update(with torrents: [Torrent]) {
+        switch torrents.count {
+        case 0:
+            showPlaceholder("No torrent selected.")
+        case 1:
+            let t = torrents[0]
+            let fields = Self.fields(for: t)
+            let signature = fields.map { ($0.fullWidth ? "W·" : "S·") + $0.caption }
+            if currentTorrentId == t.id, signature == currentSignature {
+                for f in fields { cardsByCaption[f.caption]?.setValue(f.value) }
+                needsLayout = true
+                return
+            }
+            rebuild(fields: fields)
+            currentTorrentId = t.id
+            currentSelectionIds = []
+            currentSignature = signature
+        default:
+            let fields = Self.fields(for: torrents)
+            let signature = fields.map { ($0.fullWidth ? "W·" : "S·") + $0.caption }
+            let ids = Set(torrents.map(\.id))
+            if currentSelectionIds == ids, signature == currentSignature {
+                for f in fields { cardsByCaption[f.caption]?.setValue(f.value) }
+                needsLayout = true
+                return
+            }
+            rebuild(fields: fields)
+            currentTorrentId = nil
+            currentSelectionIds = ids
+            currentSignature = signature
         }
-        let fields = Self.fields(for: t)
-        let signature = fields.map { ($0.fullWidth ? "W·" : "S·") + $0.caption }
-        if currentTorrentId == t.id, signature == currentSignature {
-            for f in fields { cardsByCaption[f.caption]?.setValue(f.value) }
-            needsLayout = true
-            return
-        }
-        rebuild(fields: fields)
-        currentTorrentId = t.id
-        currentSignature = signature
     }
 
     // MARK: - Layout
@@ -258,6 +273,7 @@ final class InfoGridView: NSView {
         guard placeholderText != text else { return }
         clear()
         currentTorrentId = nil
+        currentSelectionIds = []
         currentSignature = []
         placeholderText = text
         let label = NSTextField(labelWithString: text)
@@ -353,6 +369,63 @@ final class InfoGridView: NSView {
         } else {
             short("Hash", t.hashString, span: 2, breakBefore: true)
         }
+        return fields
+    }
+
+    /// Build the ordered field list for a multi-torrent selection. Pure — no view
+    /// dependencies — so it is unit-testable directly.
+    static func fields(for torrents: [Torrent]) -> [InfoField] {
+        var fields: [InfoField] = []
+        func short(_ caption: String, _ value: String, span: Int = 1) {
+            fields.append(InfoField(caption: caption, value: value, fullWidth: false, span: span))
+        }
+        func wide(_ caption: String, _ value: String) {
+            fields.append(InfoField(caption: caption, value: value, fullWidth: true))
+        }
+
+        // Status breakdown: active states first, then stopped.
+        let statusOrder: [TorrentStatus] = [.downloading, .seeding, .checking,
+                                             .checkWait, .downloadWait, .seedWait, .stopped]
+        let grouped = Dictionary(grouping: torrents) { $0.status }
+        let statusSummary = statusOrder.compactMap { status -> String? in
+            guard let count = grouped[status]?.count, count > 0 else { return nil }
+            return "\(count) \(status.displayName.lowercased())"
+        }.joined(separator: " · ")
+
+        let errorCount = torrents.filter { $0.hasError }.count
+
+        let totalSize = torrents.reduce(Int64(0)) { $0 + $1.totalSize }
+        let totalSizeWhenDone = torrents.reduce(Int64(0)) { $0 + $1.sizeWhenDone }
+        let totalLeft = torrents.reduce(Int64(0)) { $0 + $1.leftUntilDone }
+        let overallProgress = totalSizeWhenDone > 0
+            ? Double(totalSizeWhenDone - totalLeft) / Double(totalSizeWhenDone) : 0
+
+        let totalDown = torrents.reduce(Int64(0)) { $0 + $1.downloadedEver }
+        let totalUp = torrents.reduce(Int64(0)) { $0 + $1.uploadedEver }
+        let rateDown = torrents.reduce(Int64(0)) { $0 + $1.rateDownload }
+        let rateUp = torrents.reduce(Int64(0)) { $0 + $1.rateUpload }
+
+        let totalPeers = torrents.reduce(0) { $0 + $1.peersConnected }
+        let totalSending = torrents.reduce(0) { $0 + $1.peersSendingToUs }
+        let totalGetting = torrents.reduce(0) { $0 + $1.peersGettingFromUs }
+
+        let earliestAdded = torrents.map(\.addedDate).min() ?? 0
+        let latestActivity = torrents.map(\.activityDate).max() ?? 0
+
+        short("Torrents", "\(torrents.count) selected", span: 2)
+        short("Status", statusSummary.isEmpty ? "—" : statusSummary, span: 2)
+        if errorCount > 0 { wide("Errors", "\(errorCount) with errors") }
+
+        short("Total Size", Formatters.size(totalSize))
+        short("Progress", Formatters.percent(overallProgress))
+        short("Total Downloaded", Formatters.size(totalDown))
+        short("Total Uploaded", Formatters.size(totalUp))
+        short("Download ↓", rateDown > 0 ? Formatters.speed(rateDown) : "—")
+        short("Upload ↑", rateUp > 0 ? Formatters.speed(rateUp) : "—")
+        short("Peers", "\(totalPeers) connected (↓\(totalSending) ↑\(totalGetting))")
+        short("Earliest Added", Formatters.dateTime(earliestAdded))
+        short("Latest Activity", Formatters.dateTime(latestActivity))
+
         return fields
     }
 }

@@ -249,7 +249,7 @@ final class MainWindowController: NSWindowController {
 
         // Detail pane.
         infoGrid.onCopy = { [weak self] value in self?.showToast("Copied: \(value)") }
-        infoGrid.update(with: nil, selectionCount: 0)
+        infoGrid.update(with: [])
         let detailScroll = NSScrollView()
         let detailContainer = NSView()
         detailContainer.addSubview(infoGrid)
@@ -713,7 +713,7 @@ final class MainWindowController: NSWindowController {
     // MARK: - Detail pane
 
     private func updateDetail() {
-        infoGrid.update(with: selectedTorrents.first, selectionCount: selectedTorrents.count)
+        infoGrid.update(with: selectedTorrents)
     }
 
     /// Text shown for a torrent in a given column (shared by the cell view and the

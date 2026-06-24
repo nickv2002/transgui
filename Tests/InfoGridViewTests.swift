@@ -113,6 +113,98 @@ final class InfoGridViewTests: XCTestCase {
         XCTAssertNotNil(extra.first { $0.caption == "Completed" })
     }
 
+    // MARK: - Multi-selection field list (pure)
+
+    func testMultiSelectionTorrentsFieldIsFirstSpanTwo() {
+        let fields = InfoGridView.fields(for: [
+            TorrentFactory.make(["id": 1]),
+            TorrentFactory.make(["id": 2]),
+            TorrentFactory.make(["id": 3]),
+        ])
+        XCTAssertEqual(fields.first?.caption, "Torrents")
+        XCTAssertEqual(fields.first?.value, "3 selected")
+        XCTAssertEqual(fields.first?.span, 2)
+        XCTAssertFalse(fields.first?.fullWidth ?? true)
+    }
+
+    func testMultiSelectionStatusFieldIsSecondSpanTwo() {
+        let fields = InfoGridView.fields(for: [
+            TorrentFactory.make(["id": 1, "status": TorrentStatus.downloading.rawValue]),
+            TorrentFactory.make(["id": 2, "status": TorrentStatus.seeding.rawValue]),
+        ])
+        let status = fields.first { $0.caption == "Status" }
+        XCTAssertNotNil(status)
+        XCTAssertEqual(status?.span, 2)
+        XCTAssertFalse(status?.fullWidth ?? true)
+        XCTAssertTrue(status?.value.contains("downloading") ?? false)
+        XCTAssertTrue(status?.value.contains("seeding") ?? false)
+    }
+
+    func testMultiSelectionStatusOrdersActiveFirst() {
+        let fields = InfoGridView.fields(for: [
+            TorrentFactory.make(["id": 1, "status": TorrentStatus.stopped.rawValue]),
+            TorrentFactory.make(["id": 2, "status": TorrentStatus.downloading.rawValue]),
+        ])
+        let statusValue = fields.first { $0.caption == "Status" }!.value
+        XCTAssertLessThan(statusValue.range(of: "downloading")!.lowerBound,
+                          statusValue.range(of: "stopped")!.lowerBound,
+                          "downloading should appear before stopped")
+    }
+
+    func testMultiSelectionErrorsFieldAppearsOnlyWhenAnyErrored() {
+        let clean = InfoGridView.fields(for: [
+            TorrentFactory.make(["id": 1]),
+            TorrentFactory.make(["id": 2]),
+        ])
+        XCTAssertNil(clean.first { $0.caption == "Errors" })
+
+        let errored = InfoGridView.fields(for: [
+            TorrentFactory.make(["id": 1, "errorString": "bad", "error": 1]),
+            TorrentFactory.make(["id": 2]),
+        ])
+        let errors = errored.first { $0.caption == "Errors" }
+        XCTAssertEqual(errors?.value, "1 with errors")
+        XCTAssertEqual(errors?.fullWidth, true)
+    }
+
+    func testMultiSelectionCoreFieldsPresent() {
+        let fields = InfoGridView.fields(for: [
+            TorrentFactory.make(["id": 1]),
+            TorrentFactory.make(["id": 2]),
+        ])
+        let byCaption = Dictionary(uniqueKeysWithValues: fields.map { ($0.caption, $0) })
+        for caption in ["Torrents", "Status", "Total Size", "Progress", "Total Downloaded",
+                        "Total Uploaded", "Download ↓", "Upload ↑", "Peers",
+                        "Earliest Added", "Latest Activity"] {
+            XCTAssertNotNil(byCaption[caption], "missing field \(caption)")
+        }
+    }
+
+    func testMultiSelectionAggregatesMath() {
+        let fields = InfoGridView.fields(for: [
+            TorrentFactory.make(["id": 1, "rateDownload": 1_000_000, "rateUpload": 500_000,
+                                 "sizeWhenDone": 2_000, "leftUntilDone": 1_000]),
+            TorrentFactory.make(["id": 2, "rateDownload": 2_000_000, "rateUpload": 0,
+                                 "sizeWhenDone": 2_000, "leftUntilDone": 0]),
+        ])
+        let byCaption = Dictionary(uniqueKeysWithValues: fields.map { ($0.caption, $0) })
+        // Combined rates
+        XCTAssertEqual(byCaption["Download ↓"]?.value, Formatters.speed(3_000_000))
+        XCTAssertEqual(byCaption["Upload ↑"]?.value, Formatters.speed(500_000))
+        // Overall progress: (4000 - 1000) / 4000 = 75%
+        XCTAssertEqual(byCaption["Progress"]?.value, Formatters.percent(0.75))
+    }
+
+    func testMultiSelectionZeroRatesRenderAsDash() {
+        let fields = InfoGridView.fields(for: [
+            TorrentFactory.make(["id": 1, "rateDownload": 0, "rateUpload": 0]),
+            TorrentFactory.make(["id": 2, "rateDownload": 0, "rateUpload": 0]),
+        ])
+        let byCaption = Dictionary(uniqueKeysWithValues: fields.map { ($0.caption, $0) })
+        XCTAssertEqual(byCaption["Download ↓"]?.value, "—")
+        XCTAssertEqual(byCaption["Upload ↑"]?.value, "—")
+    }
+
     func testZeroSpeedAndEtaRenderAsDash() {
         let fields = InfoGridView.fields(for: TorrentFactory.make([
             "rateDownload": 0, "rateUpload": 0,
@@ -146,7 +238,7 @@ final class InfoGridViewTests: XCTestCase {
 
     func testPopulatedViewHasContentDrivenHeight() {
         let view = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 10))
-        view.update(with: TorrentFactory.make(), selectionCount: 1)
+        view.update(with: [TorrentFactory.make()])
         laidOut(view)
         // Many rows of cards must produce a tall content height — the first bug
         // shipped a view that collapsed to ~0 and drew outside its bounds.
@@ -156,7 +248,7 @@ final class InfoGridViewTests: XCTestCase {
 
     func testChildrenStayWithinWidth() {
         let view = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 10))
-        view.update(with: TorrentFactory.make(), selectionCount: 1)
+        view.update(with: [TorrentFactory.make()])
         laidOut(view, width: 560)
         for sub in view.subviews {
             XCTAssertLessThanOrEqual(sub.frame.maxX, 560 + 1, "child overflows the view width")
@@ -168,7 +260,7 @@ final class InfoGridViewTests: XCTestCase {
     /// sidebar could not be made smaller.
     func testReflowsToNarrowWidthWithoutMinimum() {
         let view = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 10))
-        view.update(with: TorrentFactory.make(), selectionCount: 1)
+        view.update(with: [TorrentFactory.make()])
         laidOut(view, width: 180)
         XCTAssertEqual(view.intrinsicContentSize.width, NSView.noIntrinsicMetric,
                        "must not demand a fixed width")
@@ -181,25 +273,35 @@ final class InfoGridViewTests: XCTestCase {
 
     func testPlaceholderRendersWithPositiveHeight() {
         let view = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 10))
-        view.update(with: nil, selectionCount: 0)
+        view.update(with: [])
         laidOut(view)
         XCTAssertEqual(view.placeholderText, "No torrent selected.")
         XCTAssertGreaterThan(view.intrinsicContentSize.height, 0)
+    }
 
-        view.update(with: nil, selectionCount: 3)
-        XCTAssertEqual(view.placeholderText, "3 torrents selected.")
+    func testMultiSelectionShowsAggregateView() {
+        let view = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 10))
+        let t1 = TorrentFactory.make(["id": 1])
+        let t2 = TorrentFactory.make(["id": 2])
+        let t3 = TorrentFactory.make(["id": 3])
+        view.update(with: [t1, t2, t3])
+        laidOut(view)
+        XCTAssertNil(view.placeholderText)
+        XCTAssertEqual(view.renderedValue(forCaption: "Torrents"), "3 selected")
+        XCTAssertNotNil(view.renderedValue(forCaption: "Status"))
+        XCTAssertGreaterThan(view.intrinsicContentSize.height, 0)
     }
 
     // MARK: - Update path: reuse vs. rebuild
 
     func testSameTorrentUpdatesValuesInPlace() {
         let view = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 400))
-        view.update(with: TorrentFactory.make(["id": 7, "rateDownload": 0]), selectionCount: 1)
+        view.update(with: [TorrentFactory.make(["id": 7, "rateDownload": 0])])
         laidOut(view)
         let rowsBefore = view.renderedRowCount
         let nameCard = view.renderedCard(forCaption: "Name")
 
-        view.update(with: TorrentFactory.make(["id": 7, "rateDownload": 1_048_576]), selectionCount: 1)
+        view.update(with: [TorrentFactory.make(["id": 7, "rateDownload": 1_048_576])])
         laidOut(view)
         XCTAssertEqual(view.renderedRowCount, rowsBefore, "structure unchanged → no rebuild")
         XCTAssertTrue(view.renderedCard(forCaption: "Name") === nameCard, "cards reused")
@@ -208,12 +310,12 @@ final class InfoGridViewTests: XCTestCase {
 
     func testStructureChangeRebuilds() {
         let view = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 400))
-        view.update(with: TorrentFactory.make(["id": 7]), selectionCount: 1)
+        view.update(with: [TorrentFactory.make(["id": 7])])
         laidOut(view)
         let rowsBefore = view.renderedRowCount
         XCTAssertNil(view.renderedValue(forCaption: "Comment"))
 
-        view.update(with: TorrentFactory.make(["id": 7, "comment": "now present"]), selectionCount: 1)
+        view.update(with: [TorrentFactory.make(["id": 7, "comment": "now present"])])
         laidOut(view)
         XCTAssertGreaterThan(view.renderedRowCount, rowsBefore, "a full-width Comment row was added")
         XCTAssertEqual(view.renderedValue(forCaption: "Comment"), "now present")
@@ -221,15 +323,15 @@ final class InfoGridViewTests: XCTestCase {
 
     func testSwitchingTorrentUpdatesValues() {
         let view = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 400))
-        view.update(with: TorrentFactory.make(["id": 1, "name": "First"]), selectionCount: 1)
-        view.update(with: TorrentFactory.make(["id": 2, "name": "Second"]), selectionCount: 1)
+        view.update(with: [TorrentFactory.make(["id": 1, "name": "First"])])
+        view.update(with: [TorrentFactory.make(["id": 2, "name": "Second"])])
         XCTAssertEqual(view.renderedValue(forCaption: "Name"), "Second")
     }
 
     func testPlaceholderThenTorrentRenders() {
         let view = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 400))
-        view.update(with: nil, selectionCount: 0)
-        view.update(with: TorrentFactory.make(["name": "Back"]), selectionCount: 1)
+        view.update(with: [])
+        view.update(with: [TorrentFactory.make(["name": "Back"])])
         XCTAssertNil(view.placeholderText)
         XCTAssertEqual(view.renderedValue(forCaption: "Name"), "Back")
     }
@@ -251,7 +353,7 @@ final class InfoGridViewTests: XCTestCase {
         let view = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 400))
         var copiedValue: String?
         view.onCopy = { copiedValue = $0 }
-        view.update(with: TorrentFactory.make(["name": "Copy.Me.mkv"]), selectionCount: 1)
+        view.update(with: [TorrentFactory.make(["name": "Copy.Me.mkv"])])
 
         let nameCard = try! XCTUnwrap(view.renderedCard(forCaption: "Name"))
         click(nameCard)
@@ -265,7 +367,7 @@ final class InfoGridViewTests: XCTestCase {
         let view = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 400))
         var copied: String?
         view.onCopy = { copied = $0 }
-        view.update(with: TorrentFactory.make(["percentDone": 1.0]), selectionCount: 1)
+        view.update(with: [TorrentFactory.make(["percentDone": 1.0])])
         click(try! XCTUnwrap(view.renderedCard(forCaption: "Progress")))
         XCTAssertEqual(copied, Formatters.percent(1.0))
     }
@@ -274,11 +376,11 @@ final class InfoGridViewTests: XCTestCase {
 
     func testUsesMoreColumnsWhenWiderSoFewerRows() {
         let wide = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 10))
-        wide.update(with: TorrentFactory.make(), selectionCount: 1)
+        wide.update(with: [TorrentFactory.make()])
         laidOut(wide, width: 900)        // room for 4 columns
 
         let narrow = InfoGridView(frame: NSRect(x: 0, y: 0, width: 560, height: 10))
-        narrow.update(with: TorrentFactory.make(), selectionCount: 1)
+        narrow.update(with: [TorrentFactory.make()])
         laidOut(narrow, width: 380)      // room for ~2 columns
 
         XCTAssertLessThan(wide.renderedRowCount, narrow.renderedRowCount,
