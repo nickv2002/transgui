@@ -269,11 +269,16 @@ extension MainWindowController: NSToolbarDelegate {
 
     @objc func moveSelected(_ sender: Any?) {
         guard let t = selectionForAction().first else { return }
-        promptText(title: "Move Torrent Data",
-                   message: "New location on the server for “\(t.name)”:",
-                   defaultValue: t.downloadDir) { [weak self] location in
-            guard let location, !location.isEmpty, location != t.downloadDir else { return }
-            self?.runRPC { try await $0.setLocation(ids: [t.id], location: location, move: true) }
+        promptLocation(
+            title: "Move Torrent Data",
+            message: "New location on the server for “\(t.name)”:",
+            defaultValue: t.downloadDir
+        ) { [weak self] location in
+            guard let self else { return }
+            guard let location, !location.isEmpty,
+                  Torrent.normalizeDownloadDir(location) != t.normalizedDownloadDir else { return }
+            recordMoveDir(location)
+            runRPC { try await $0.setLocation(ids: [t.id], location: location, move: true) }
         }
     }
 
@@ -430,6 +435,54 @@ extension MainWindowController: NSToolbarDelegate {
             } catch {
                 showError(error)
             }
+        }
+    }
+
+    private func recordMoveDir(_ dir: String) {
+        let key = "RecentMoveDirs"
+        let normalized = Torrent.normalizeDownloadDir(dir)
+        var list = UserDefaults.standard.stringArray(forKey: key) ?? []
+        list.removeAll { Torrent.normalizeDownloadDir($0) == normalized }
+        list.insert(normalized, at: 0)
+        UserDefaults.standard.set(Array(list.prefix(20)), forKey: key)
+    }
+
+    private func promptLocation(title: String, message: String, defaultValue: String,
+                                completion: @escaping (String?) -> Void) {
+        guard let window else { return }
+
+        let recentKey = "RecentMoveDirs"
+        let recent = UserDefaults.standard.stringArray(forKey: recentKey) ?? []
+        let recentSet = Set(recent.map { Torrent.normalizeDownloadDir($0) })
+
+        var seen = Set<String>()
+        let torrentDirs: [String] = torrents
+            .map(\.normalizedDownloadDir)
+            .compactMap { dir -> String? in
+                guard !recentSet.contains(dir), seen.insert(dir).inserted else { return nil }
+                return dir
+            }
+            .sorted()
+
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+
+        let combo = NSComboBox(frame: NSRect(x: 0, y: 0, width: 320, height: 26))
+        combo.stringValue = defaultValue
+        combo.lineBreakMode = .byTruncatingHead
+        combo.addItems(withObjectValues: recent + torrentDirs)
+        combo.completes = true
+        combo.numberOfVisibleItems = 10
+
+        alert.accessoryView = combo
+        alert.window.initialFirstResponder = combo
+
+        alert.beginSheetModal(for: window) { response in
+            combo.validateEditing()
+            completion(response == .alertFirstButtonReturn ? combo.stringValue : nil)
         }
     }
 
