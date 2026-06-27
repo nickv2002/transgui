@@ -453,16 +453,14 @@ extension MainWindowController: NSToolbarDelegate {
 
         let recentKey = "RecentMoveDirs"
         let recent = UserDefaults.standard.stringArray(forKey: recentKey) ?? []
-        let recentSet = Set(recent.map { Torrent.normalizeDownloadDir($0) })
 
         var seen = Set<String>()
-        let torrentDirs: [String] = torrents
-            .map(\.normalizedDownloadDir)
+        let allDirs: [String] = (recent + torrents.map(\.normalizedDownloadDir))
             .compactMap { dir -> String? in
-                guard !recentSet.contains(dir), seen.insert(dir).inserted else { return nil }
-                return dir
+                let normalized = Torrent.normalizeDownloadDir(dir)
+                return seen.insert(normalized).inserted ? normalized : nil
             }
-            .sorted()
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
 
         let alert = NSAlert()
         alert.messageText = title
@@ -473,7 +471,7 @@ extension MainWindowController: NSToolbarDelegate {
         let combo = NSComboBox(frame: NSRect(x: 0, y: 0, width: 320, height: 26))
         combo.stringValue = defaultValue
         combo.lineBreakMode = .byTruncatingHead
-        combo.addItems(withObjectValues: recent + torrentDirs)
+        combo.addItems(withObjectValues: allDirs)
         combo.completes = true
         combo.numberOfVisibleItems = 10
 
