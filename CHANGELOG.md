@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.06.26.2 — 2026-06-26
+
+- Add GitHub link to About panel and Check for Update menu item
+- Sort Move dialog location list alphabetically
+
 ## 2026.06.26.1 — 2026-06-26
 
 - Add recent-directory combo box to Move dialog
