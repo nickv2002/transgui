@@ -487,6 +487,9 @@ final class MainWindowController: NSWindowController {
     private func applyTorrents(_ incoming: [Torrent]) {
         // Preserve the user's selection across reloads by id.
         let selectedIds = selectedTorrentIds()
+        // sidebar/table reloads can steal focus; save it so the files table
+        // stays focused across polls when the user is working there.
+        let filesTableFocused = window?.firstResponder === filesTable
         torrents = incoming
         sortTorrents()
         sidebar.update(with: torrents)
@@ -497,6 +500,7 @@ final class MainWindowController: NSWindowController {
         loadFilesIfNeeded()
         updateStatusBar(state: refresh.state)
         window?.toolbar?.validateVisibleItems()
+        if filesTableFocused { window?.makeFirstResponder(filesTable) }
     }
 
     /// Recompute the rendered list from `torrents` + `filterText` + `searchMode`.

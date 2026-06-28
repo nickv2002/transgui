@@ -124,7 +124,7 @@ extension MainWindowController {
                 filesFetchTask?.cancel()
                 filesTorrentId = nil
                 files = []
-                filesTable.reloadData()
+                reloadFilesData()
             }
             return
         }
@@ -134,7 +134,7 @@ extension MainWindowController {
         if filesTorrentId != torrent.id {
             filesTorrentId = torrent.id
             files = []
-            filesTable.reloadData()
+            reloadFilesData()
         }
 
         guard let client = refresh.activeClient else { return }
@@ -145,7 +145,7 @@ extension MainWindowController {
                 let fetched = try await client.fetchFiles(id: id)
                 guard !Task.isCancelled, self.filesTorrentId == id else { return }
                 self.files = fetched
-                self.filesTable.reloadData()
+                self.reloadFilesData()
             } catch {
                 // Silent: the list poll surfaces connection errors already.
             }
@@ -184,6 +184,25 @@ extension MainWindowController {
         let fileIndex = files[sender.tag].index
         let wanted = sender.state == .on
         runFilesRPC { try await $0.setFilesWanted(id: id, fileIndices: [fileIndex], wanted: wanted) }
+    }
+
+    /// Reload the files table, preserving the user's selection and focus.
+    ///
+    /// `NSTableView.reloadData()` drops `selectedRowIndexes` on this toolchain
+    /// (the main table works around the same thing via `restoreSelection`), so a
+    /// poll/RPC refresh would silently deselect the file the user picked. The file
+    /// list keeps a stable order across refreshes (Transmission indexes files), so
+    /// restoring by row index reselects the same files; indexes past the new row
+    /// count are dropped.
+    private func reloadFilesData() {
+        let restoreFocus = window?.firstResponder === filesTable
+        let selection = filesTable.selectedRowIndexes
+        filesTable.reloadData()
+        if !selection.isEmpty {
+            let valid = selection.filteredIndexSet { $0 < files.count }
+            if !valid.isEmpty { filesTable.selectRowIndexes(valid, byExtendingSelection: false) }
+        }
+        if restoreFocus { window?.makeFirstResponder(filesTable) }
     }
 
     /// Run a files RPC then re-fetch the file list to reflect the change.
