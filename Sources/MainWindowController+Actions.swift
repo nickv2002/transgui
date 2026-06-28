@@ -118,9 +118,11 @@ extension MainWindowController: NSToolbarDelegate {
 
     func rowContextMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(withTitle: "Start", action: #selector(startSelected(_:)), keyEquivalent: "\r")
+        menu.addItem(withTitle: "Start", action: #selector(startSelected(_:)), keyEquivalent: "s")
+            .keyEquivalentModifierMask = [.command]
         menu.addItem(withTitle: "Stop", action: #selector(stopSelected(_:)), keyEquivalent: ".")
-        menu.addItem(withTitle: "Force Start", action: #selector(forceStartSelected(_:)), keyEquivalent: "\r")
+            .keyEquivalentModifierMask = [.command]
+        menu.addItem(withTitle: "Force Start", action: #selector(forceStartSelected(_:)), keyEquivalent: "s")
             .keyEquivalentModifierMask = [.command, .option]
         menu.addItem(.separator())
         menu.addItem(withTitle: "Verify", action: #selector(verifySelected(_:)), keyEquivalent: "")
@@ -152,9 +154,11 @@ extension MainWindowController: NSToolbarDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Reveal in Finder", action: #selector(revealInFinderSelected(_:)), keyEquivalent: "r")
             .keyEquivalentModifierMask = [.command, .shift]
-        menu.addItem(withTitle: "Open", action: #selector(openSelected(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Open", action: #selector(openSelected(_:)), keyEquivalent: "\r")
+            .keyEquivalentModifierMask = [.command]
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Rename…", action: #selector(renameSelected(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Rename…", action: #selector(renameSelected(_:)), keyEquivalent: "\r")
+            .keyEquivalentModifierMask = []
         menu.addItem(withTitle: "Move…", action: #selector(moveSelected(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         // "Remove Torrent" — no confirmation needed (reversible: just removes from daemon).

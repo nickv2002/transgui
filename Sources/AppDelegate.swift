@@ -226,13 +226,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         torrentMenu.addItem(withTitle: "Start",
                             action: #selector(MainWindowController.startSelected(_:)),
-                            keyEquivalent: "\r")
+                            keyEquivalent: "s")
+            .keyEquivalentModifierMask = [.command]
         torrentMenu.addItem(withTitle: "Stop",
                             action: #selector(MainWindowController.stopSelected(_:)),
                             keyEquivalent: ".")
+            .keyEquivalentModifierMask = [.command]
         torrentMenu.addItem(withTitle: "Force Start",
                             action: #selector(MainWindowController.forceStartSelected(_:)),
-                            keyEquivalent: "\r")
+                            keyEquivalent: "s")
             .keyEquivalentModifierMask = [.command, .option]
 
         torrentMenu.addItem(.separator())
@@ -268,13 +270,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .keyEquivalentModifierMask = [.command, .shift]
         torrentMenu.addItem(withTitle: "Open",
                             action: #selector(MainWindowController.openSelected(_:)),
-                            keyEquivalent: "")
+                            keyEquivalent: "\r")
+            .keyEquivalentModifierMask = [.command]
 
         torrentMenu.addItem(.separator())
 
         torrentMenu.addItem(withTitle: "Rename…",
                             action: #selector(MainWindowController.renameSelected(_:)),
-                            keyEquivalent: "")
+                            keyEquivalent: "\r")
+            .keyEquivalentModifierMask = []
         torrentMenu.addItem(withTitle: "Move…",
                             action: #selector(MainWindowController.moveSelected(_:)),
                             keyEquivalent: "")
