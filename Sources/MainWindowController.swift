@@ -19,7 +19,7 @@ final class MainWindowController: NSWindowController {
 
     /// Detail-pane tabs (Info / Files) and the per-file table.
     let detailTabView = NSTabView()
-    let filesTable = NSTableView()
+    let filesTable = FilesTableView()
 
     /// Source-list sidebar of status / tracker / folder filter groups.
     let sidebar = SidebarController()

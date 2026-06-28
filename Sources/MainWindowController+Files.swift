@@ -71,6 +71,8 @@ extension MainWindowController {
         }
         priorityItem.submenu = priorityMenu
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Rename…", action: #selector(renameFile(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Reveal in Finder", action: #selector(revealFileInFinder(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Open", action: #selector(openFile(_:)), keyEquivalent: "")
         for item in menu.items where item.action != nil { item.target = self }
@@ -89,6 +91,19 @@ extension MainWindowController {
         revealOrOpen(remotePath: remote, open: true)
     }
 
+    @objc func renameFile(_ sender: Any?) {
+        guard let torrent = selectedTorrents.first, let file = targetedSingleFile() else { return }
+        let torrentId = torrent.id
+        let oldPath = file.name
+        let oldName = (oldPath as NSString).lastPathComponent
+        promptText(title: "Rename File",
+                   message: "New name for \u{201C}\(oldName)\u{201D}:",
+                   defaultValue: oldName) { [weak self] newName in
+            guard let newName, newName != oldName, !newName.isEmpty else { return }
+            self?.runFilesRPC { try await $0.rename(id: torrentId, path: oldPath, name: newName) }
+        }
+    }
+
     /// The remote path of the single targeted file (right-clicked row, else a lone
     /// selection): the current torrent's download dir + the file's relative name.
     /// `nil` when no single file is targeted.
@@ -97,7 +112,7 @@ extension MainWindowController {
         return torrent.normalizedDownloadDir + "/" + file.name
     }
 
-    private func targetedSingleFile() -> TorrentFile? {
+    func targetedSingleFile() -> TorrentFile? {
         let clicked = filesTable.clickedRow
         let selected = filesTable.selectedRowIndexes
         let row: Int
@@ -214,7 +229,7 @@ extension MainWindowController {
                 let fetched = try await client.fetchFiles(id: id)
                 guard self.filesTorrentId == id else { return }
                 self.files = fetched
-                self.filesTable.reloadData()
+                self.reloadFilesData()
             } catch {
                 self.showError(error)
             }
@@ -289,5 +304,20 @@ extension MainWindowController {
 extension MainWindowController: NSTabViewDelegate {
     func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
         loadFilesIfNeeded()
+    }
+}
+
+// MARK: - FilesTableView
+
+/// NSTableView subclass that intercepts ↩ to trigger the rename-file action,
+/// matching Finder's convention for renaming selected items.
+final class FilesTableView: NSTableView {
+    override func keyDown(with event: NSEvent) {
+        let noMods = event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
+        if noMods, event.charactersIgnoringModifiers == "\r" {
+            NSApp.sendAction(#selector(MainWindowController.renameFile(_:)), to: nil, from: self)
+            return
+        }
+        super.keyDown(with: event)
     }
 }

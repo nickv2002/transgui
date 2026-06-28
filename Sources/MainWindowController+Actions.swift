@@ -207,6 +207,10 @@ extension MainWindowController: NSToolbarDelegate {
             guard let remote = targetedFileRemotePath() else { return false }
             return refresh.activeServerConfig.mapRemoteToLocal(remote) != nil
         }
+        // Files-tab Rename: enabled only when a single file is targeted.
+        if action == #selector(renameFile(_:)) {
+            return targetedSingleFile() != nil
+        }
         let selection = selectionForAction()
         guard !selection.isEmpty else { return false }
         switch action {
@@ -490,7 +494,7 @@ extension MainWindowController: NSToolbarDelegate {
 
     /// A modal text-entry sheet. Calls `completion` with the entered string, or
     /// nil if cancelled.
-    private func promptText(title: String, message: String, defaultValue: String,
+    func promptText(title: String, message: String, defaultValue: String,
                             completion: @escaping (String?) -> Void) {
         guard let window else { return }
         let alert = NSAlert()
