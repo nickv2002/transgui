@@ -262,7 +262,8 @@ extension MainWindowController {
                     c.identifier = ProgressCellView.reuseIdentifier
                     return c
                 }()
-            cell.configure(fraction: file.percentDone)
+            cell.configure(fraction: file.percentDone,
+                           color: file.percentDone >= 1 ? .systemGreen : .controlAccentColor)
             return cell
         }
 
