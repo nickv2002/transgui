@@ -272,8 +272,9 @@ final class MainWindowController: NSWindowController {
         ])
 
         // Detail tabs: Info (the text above) + Files (per-file table).
+        // Delegate is wired AFTER setup so that addTabViewItem / selectTabViewItem
+        // during init cannot overwrite the user's saved tab preference.
         let filesScroll = buildFilesTable()
-        detailTabView.delegate = self
         let infoTab = NSTabViewItem(identifier: "info")
         infoTab.label = "Info"
         infoTab.view = detailScroll
@@ -282,6 +283,11 @@ final class MainWindowController: NSWindowController {
         filesTab.view = filesScroll
         detailTabView.addTabViewItem(infoTab)
         detailTabView.addTabViewItem(filesTab)
+        if let saved = UserDefaults.standard.string(forKey: "DetailTabIdentifier"),
+           let item = detailTabView.tabViewItems.first(where: { ($0.identifier as? String) == saved }) {
+            detailTabView.selectTabViewItem(item)
+        }
+        detailTabView.delegate = self
 
         // Vertical split between table and detail.
         let split = NSSplitView()

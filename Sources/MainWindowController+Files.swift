@@ -32,13 +32,20 @@ extension MainWindowController {
 
     // MARK: - Building
 
+    private static let filesColumnWidthsKey = "FilesColumnWidths"
+
     func buildFilesTable() -> NSScrollView {
         for column in FileColumn.allCases {
             let col = NSTableColumn(identifier: column.identifier)
             col.title = column.title
             col.width = column.width
-            tableView(filesTable, addColumn: col)
+            filesTable.addTableColumn(col)
         }
+        restoreFilesColumnWidths()
+        NotificationCenter.default.addObserver(self, selector: #selector(filesColumnResized(_:)),
+                                               name: NSTableView.columnDidResizeNotification,
+                                               object: filesTable)
+
         filesTable.usesAlternatingRowBackgroundColors = true
         filesTable.allowsMultipleSelection = true
         filesTable.rowHeight = 20
@@ -51,6 +58,23 @@ extension MainWindowController {
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         return scroll
+    }
+
+    private func restoreFilesColumnWidths() {
+        guard let dict = UserDefaults.standard.dictionary(forKey: Self.filesColumnWidthsKey) else { return }
+        for col in filesTable.tableColumns {
+            if let width = dict[col.identifier.rawValue] as? CGFloat {
+                col.width = width
+            }
+        }
+    }
+
+    @objc private func filesColumnResized(_ notification: Notification) {
+        var dict: [String: CGFloat] = [:]
+        for col in filesTable.tableColumns {
+            dict[col.identifier.rawValue] = col.width
+        }
+        UserDefaults.standard.set(dict, forKey: Self.filesColumnWidthsKey)
     }
 
     private func tableView(_ table: NSTableView, addColumn col: NSTableColumn) {
@@ -304,6 +328,9 @@ extension MainWindowController {
 
 extension MainWindowController: NSTabViewDelegate {
     func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        if let id = tabViewItem?.identifier as? String {
+            UserDefaults.standard.set(id, forKey: "DetailTabIdentifier")
+        }
         loadFilesIfNeeded()
     }
 }
