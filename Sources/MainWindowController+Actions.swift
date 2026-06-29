@@ -157,9 +157,15 @@ extension MainWindowController: NSToolbarDelegate {
         menu.addItem(withTitle: "Open", action: #selector(openSelected(_:)), keyEquivalent: "\r")
             .keyEquivalentModifierMask = [.command]
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Copy Name", action: #selector(copyNameSelected(_:)), keyEquivalent: "c")
+            .keyEquivalentModifierMask = [.command]
+        menu.addItem(withTitle: "Copy Remote Path", action: #selector(copyRemotePathSelected(_:)), keyEquivalent: "c")
+            .keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Rename…", action: #selector(renameSelected(_:)), keyEquivalent: "\r")
             .keyEquivalentModifierMask = []
-        menu.addItem(withTitle: "Move…", action: #selector(moveSelected(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Move…", action: #selector(moveSelected(_:)), keyEquivalent: "m")
+            .keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(.separator())
         // "Remove Torrent" — no confirmation needed (reversible: just removes from daemon).
         let removeItem = menu.addItem(withTitle: "Remove Torrent", action: #selector(removeTorrentDirectly(_:)), keyEquivalent: "")
@@ -384,6 +390,30 @@ extension MainWindowController: NSToolbarDelegate {
     }
 
     // MARK: - Reveal / Open (remote→local path mapping)
+
+    /// Standard ⌘C. Shares the `copy:` selector with `NSText.copy(_:)`, so when the
+    /// torrent table is first responder this copies the selected names; when a text
+    /// field is first responder the field's own `copy:` wins via the responder chain.
+    @objc func copy(_ sender: Any?) { copySelectedNames() }
+
+    /// Labeled "Copy Name" menu item. A dedicated selector (not `copy:`) so it never
+    /// duplicates the standard Copy's ⌘C and is auto-disabled in text-field contexts.
+    @objc func copyNameSelected(_ sender: Any?) { copySelectedNames() }
+
+    @objc func copyRemotePathSelected(_ sender: Any?) {
+        let paths = selectionForAction().map { remotePath(for: $0) }
+        guard !paths.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
+    }
+
+    /// Copy the selected torrents' names, one per line in display order.
+    private func copySelectedNames() {
+        let names = selectionForAction().map(\.name)
+        guard !names.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(names.joined(separator: "\n"), forType: .string)
+    }
 
     @objc func revealInFinderSelected(_ sender: Any?) {
         guard let t = selectionForAction().first else { return }

@@ -184,6 +184,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenu.addItem(.separator())
+        // Torrent copy actions. "Copy Name" carries no key equivalent — the standard
+        // Copy above (⌘C) already copies selected names when the table is focused
+        // (shared `copy:` selector); a second ⌘C here would just duplicate it.
+        editMenu.addItem(withTitle: "Copy Name",
+                         action: #selector(MainWindowController.copyNameSelected(_:)), keyEquivalent: "")
+        editMenu.addItem(withTitle: "Copy Remote Path",
+                         action: #selector(MainWindowController.copyRemotePathSelected(_:)), keyEquivalent: "c")
+            .keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
         let find = editMenu.addItem(withTitle: "Find", action: #selector(findInList(_:)), keyEquivalent: "f")
         find.target = self
         editMenuItem.submenu = editMenu
@@ -251,7 +260,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .keyEquivalentModifierMask = []
         torrentMenu.addItem(withTitle: "Move…",
                             action: #selector(MainWindowController.moveSelected(_:)),
-                            keyEquivalent: "")
+                            keyEquivalent: "m")
+            .keyEquivalentModifierMask = [.command, .shift]
 
         torrentMenu.addItem(.separator())
 
