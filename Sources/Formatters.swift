@@ -19,8 +19,9 @@ enum Formatters {
         return byteFormatter().string(fromByteCount: bytesPerSec) + "/s"
     }
 
-    static func percent(_ fraction: Double) -> String {
-        String(format: "%.0f%%", min(max(fraction, 0), 1) * 100)
+    static func percent(_ fraction: Double, precise: Bool = false) -> String {
+        let pct = min(max(fraction, 0), 1) * 100
+        return precise ? String(format: "%.1f%%", pct) : String(format: "%.0f%%", pct)
     }
 
     static func ratio(_ value: Double) -> String {

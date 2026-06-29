@@ -3,8 +3,13 @@ import AppKit
 /// A flat, state-coloured progress bar with the percentage overlaid — a richer
 /// take than the stock `NSProgressIndicator` (which can't be tinted per row).
 final class ProgressCellView: NSTableCellView {
+    /// Width (pt) of the cell above which we show one decimal place (e.g. "99.9%").
+    private static let preciseThreshold: CGFloat = 52
+
     private let bar = BarView()
     private let label = NSTextField(labelWithString: "")
+    private var fraction: Double = 0
+    private var currentPrecise: Bool?
 
     static let reuseIdentifier = NSUserInterfaceItemIdentifier("ProgressCell")
 
@@ -40,7 +45,21 @@ final class ProgressCellView: NSTableCellView {
         bar.fraction = f
         bar.fillColor = color
         bar.needsDisplay = true
-        label.stringValue = Formatters.percent(fraction)
+        self.fraction = fraction
+        currentPrecise = nil      // force re-render on reuse
+        applyLabel()
+    }
+
+    override func layout() {
+        super.layout()
+        applyLabel()
+    }
+
+    private func applyLabel() {
+        let precise = bounds.width >= Self.preciseThreshold
+        guard currentPrecise != precise else { return }
+        currentPrecise = precise
+        label.stringValue = Formatters.percent(fraction, precise: precise)
     }
 
     /// The drawn track + fill.
