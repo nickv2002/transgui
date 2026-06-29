@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.06.29.1 — 2026-06-29
+
+- Add Copy Name / Copy Remote Path actions and ⌘⇧M for Move
+- Show one decimal place on progress % when the column is wide enough
+
 ## 2026.06.28.2 — 2026-06-28
 
 - Add Sparkle 2.x in-app auto-updater

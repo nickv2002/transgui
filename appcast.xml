@@ -19,5 +19,17 @@
         length="3189312"
         type="application/octet-stream"/>
     </item>
+    <item>
+      <title>2026.06.29.1</title>
+      <sparkle:version>2026.06.29.1</sparkle:version>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <pubDate>Mon, 29 Jun 2026 07:24:04 +0000</pubDate>
+      <description><![CDATA[<ul><li>Add Copy Name / Copy Remote Path actions and ⌘⇧M for Move</li><li>Show one decimal place on progress % when the column is wide enough</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/nickv2002/Transmission-Remote-MacOS/releases/download/v2026.06.29.1/Transmission%20Remote-2026.06.29.1.zip"
+        sparkle:edSignature="eK5AuFrMhSnPYlAjAEK4EQr0LP1oi9zBtgmz0M21TPBtJQh/vugX2GdPi/mccn5XRiN/LheazPFAwLbizXw4BA=="
+        length="3191951"
+        type="application/octet-stream"/>
+    </item>
   </channel>
 </rss>
