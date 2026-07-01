@@ -13,7 +13,7 @@ After unpacking and reading the `1.13.0` installer offline, I don't think the fo
 ## Performance / footprint concerns
 
 - **Always-on background processes.** The root collector daemon plus a per-login agent that wakes every 5 minutes run continuously, independent of whether I'm using an AI tool at all — steady-state cost for no benefit when I'm not coding.
-- **Per-event overhead on the hot path.** A hook process spawns on *every* prompt and *every* tool use, each with a watchdog/timeout wrapper. Even at a couple hundred milliseconds, that's latency tax on the inner loop of how I work all day.
+- **Per-event overhead on the hot path.** A hook process spawns on _every_ prompt and _every_ tool use, each with a watchdog/timeout wrapper. Even at a couple hundred milliseconds, that's latency tax on the inner loop of how I work all day.
 - **A 500MB on-disk spool.** The collector keeps a persistent queue (~500MB / 5000 events) under `~/.span/`, plus a local write-ahead log of all events, plus its own logs — disk and I/O that accumulate in the background.
 - **~850MB installed + a ~237MB installer**, for telemetry overhead.
 

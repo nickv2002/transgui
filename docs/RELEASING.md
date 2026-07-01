@@ -28,6 +28,7 @@ Not scriptable — requires interactive Apple/GitHub auth. Do this once per mach
    the repo. Each release run will prompt 1Password for unlock/approval. The
    key only ever touches disk as a `0600` file inside a `0700` temp directory
    that's deleted when the script exits (success or failure).
+
 2. Confirm the Developer ID Application certificate is in your login keychain:
 
    ```sh

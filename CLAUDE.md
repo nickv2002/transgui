@@ -74,14 +74,15 @@ single localhost default), `TransmissionClient.init(server:)`, a **Server menu**
 (right of Edit) that checkmarks the active server and switches the live connection,
 selection persisted in `UserDefaults` `SelectedServerName` (resolved
 UserDefaults → `currentServer` → first), window title shows the active server when
->1 configured; and a **bottom-left fetch spinner + idle dot**
-(`RefreshController.onFetchingChanged`, transition-coalesced; `circle.fill` dot
-tinted by connection state when idle, `NSProgressIndicator` while polling — note the
-spinner is near-invisible against a fast LAN server whose fetch is ~2ms). The owner's
-real config was migrated by hand to the new shape (backed up first); a second
-example `Local` entry was added so the Server menu has two to switch between.
-Follow-up fix this round: the app menu gained standard **Hide / Hide Others /
-Show All** items so **⌘H** is bound (it was a no-op before).
+
+> 1 configured; and a **bottom-left fetch spinner + idle dot**
+> (`RefreshController.onFetchingChanged`, transition-coalesced; `circle.fill` dot
+> tinted by connection state when idle, `NSProgressIndicator` while polling — note the
+> spinner is near-invisible against a fast LAN server whose fetch is ~2ms). The owner's
+> real config was migrated by hand to the new shape (backed up first); a second
+> example `Local` entry was added so the Server menu has two to switch between.
+> Follow-up fix this round: the app menu gained standard **Hide / Hide Others /
+> Show All** items so **⌘H** is bound (it was a no-op before).
 
 Intentionally dropped: **label filtering and the Labels column/sidebar group.**
 
@@ -170,8 +171,8 @@ window** (⌘,) — no more hand-edited JSONC.
     `reloadData()` (which dropped the table selection mid-edit and broke
     Test/Remove).
   - Saving runs `onChange` → `PreferencesStore.save` + `windowController.applyConfig`
-    + Server-menu rebuild. Closing dirty prompts Save / Discard / Cancel;
-    `AppDelegate.showSettings` calls `reset(to:)` on reopen.
+    - Server-menu rebuild. Closing dirty prompts Save / Discard / Cancel;
+      `AppDelegate.showSettings` calls `reset(to:)` on reopen.
   - **Test Connection** (left of Save) builds a `ServerConfig` from the **current
     form fields** (so you can test before saving), runs `session-get`, and shows a
     field-targeted success/failure alert (diagnostic mapping in the Foundation-only
@@ -185,7 +186,7 @@ window** (⌘,) — no more hand-edited JSONC.
 ### Hosts & ATS
 
 The app talks to a self-hosted daemon, usually over **plain HTTP** on a LAN/VPN.
-macOS App Transport Security blocks cleartext HTTP to *named* hosts by default, so
+macOS App Transport Security blocks cleartext HTTP to _named_ hosts by default, so
 `Info.plist` sets **`NSAllowsArbitraryLoads`** — otherwise `n5.local` would fail
 where the bare IP `10.0.1.2` works. Verified live: `10.0.1.2` and `n5.local` both
 connect over HTTP; the **Tailscale** host

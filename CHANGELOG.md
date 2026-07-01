@@ -111,4 +111,3 @@
 - [ci-skip] Update README.md
 - Building RPM installation package for Fedora 41+ (#147)
 - Development version is now 5.18.9.f
-
