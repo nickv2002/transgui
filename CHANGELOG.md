@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.06.30.1 — 2026-06-30
+
+- Wire up double-click to open in the Files tab
+- Fix Sparkle download URLs: GitHub sanitizes spaces to dots in asset names
+
 ## 2026.06.29.1 — 2026-06-29
 
 - Add Copy Name / Copy Remote Path actions and ⌘⇧M for Move

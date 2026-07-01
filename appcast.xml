@@ -31,5 +31,17 @@
         length="3191951"
         type="application/octet-stream"/>
     </item>
+    <item>
+      <title>2026.06.30.1</title>
+      <sparkle:version>2026.06.30.1</sparkle:version>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <pubDate>Wed, 01 Jul 2026 06:00:27 +0000</pubDate>
+      <description><![CDATA[<ul><li>Wire up double-click to open in the Files tab</li><li>Fix Sparkle download URLs: GitHub sanitizes spaces to dots in asset names</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/nickv2002/Transmission-Remote-MacOS/releases/download/v2026.06.30.1/Transmission.Remote-2026.06.30.1.zip"
+        sparkle:edSignature="BI0VxX1yZbgzBkdsph0xq5nbQQXruMB3tx2V1Vh0FSJZm8QUrSxUqarJEeAyWpU2HuyP/9c4ntdi+VrCLdO6AA=="
+        length="3192207"
+        type="application/octet-stream"/>
+    </item>
   </channel>
 </rss>
