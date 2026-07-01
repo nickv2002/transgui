@@ -43,5 +43,17 @@
         length="3192207"
         type="application/octet-stream"/>
     </item>
+    <item>
+      <title>2026.06.30.2</title>
+      <sparkle:version>2026.06.30.2</sparkle:version>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <pubDate>Wed, 01 Jul 2026 06:14:22 +0000</pubDate>
+      <description><![CDATA[<ul><li>Stop full reloadData() on every poll disrupting double-click</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/nickv2002/Transmission-Remote-MacOS/releases/download/v2026.06.30.2/Transmission.Remote-2026.06.30.2.zip"
+        sparkle:edSignature="HVMiFFCfOihx5ahkiHGv7ID+kt4fWwu7d0WkK2t4Tzpb0hFxGnvN1DdFEdpeSekH0Hl2BNGF3GTsWTkAo7kBCA=="
+        length="3193962"
+        type="application/octet-stream"/>
+    </item>
   </channel>
 </rss>

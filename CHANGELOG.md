@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.06.30.2 — 2026-06-30
+
+- Stop full reloadData() on every poll disrupting double-click
+
 ## 2026.06.30.1 — 2026-06-30
 
 - Wire up double-click to open in the Files tab
